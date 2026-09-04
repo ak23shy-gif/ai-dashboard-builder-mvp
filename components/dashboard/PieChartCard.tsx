@@ -2,7 +2,7 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCompactNumber } from '@/lib/data/dataProcessor';
+import { formatDashboardValue } from '@/lib/data/dataProcessor';
 
 const colors = ['#1f7a8c', '#d88c36', '#4f7f52', '#7c3aed', '#c9463d', '#64748b'];
 
@@ -11,9 +11,10 @@ type PieChartCardProps = {
   data: Array<Record<string, string | number>>;
   nameKey: string;
   valueKey: string;
+  valueLabel?: string;
 };
 
-export function PieChartCard({ title, data, nameKey, valueKey }: PieChartCardProps) {
+export function PieChartCard({ title, data, nameKey, valueKey, valueLabel }: PieChartCardProps) {
   const safeData = data.filter(
     (row) => typeof row[valueKey] === 'number' && Number.isFinite(row[valueKey] as number) && Number(row[valueKey]) > 0,
   ).slice(0, 8);
@@ -47,7 +48,7 @@ export function PieChartCard({ title, data, nameKey, valueKey }: PieChartCardPro
                     ))}
                   </Pie>
                 ) : null}
-                <Tooltip formatter={(value) => formatCompactNumber(Number(value))} />
+                <Tooltip formatter={(value) => formatDashboardValue(Number(value), `${valueKey} ${valueLabel || title}`)} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -66,7 +67,7 @@ export function PieChartCard({ title, data, nameKey, valueKey }: PieChartCardPro
                     <span className="break-words leading-5">{String(entry[nameKey])}</span>
                   </span>
                   <span className="text-right font-medium tabular-nums">
-                    {formatCompactNumber(Number(entry[valueKey]))}
+                    {formatDashboardValue(Number(entry[valueKey]), `${valueKey} ${valueLabel || title}`)}
                   </span>
                 </div>
               ))

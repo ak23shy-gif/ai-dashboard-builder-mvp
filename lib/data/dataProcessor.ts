@@ -134,7 +134,19 @@ function isPercentageContext(context: string) {
 }
 
 function isCurrencyContext(context: string) {
-  return /\b(sales|revenue|amount|cost|profit|price|value|spend|budget)\b/.test(context);
+  return /\b(sales|revenue|amount|cost|profit|price|value|spend|budget|gbp|usd|eur|currency)\b|[$£€]/.test(context);
+}
+
+function currencySymbol(context: string) {
+  if (/\b(usd|dollar|dollars)\b|[$]/.test(context)) {
+    return '$';
+  }
+
+  if (/\b(eur|euro|euros)\b|[€]/.test(context)) {
+    return '€';
+  }
+
+  return '£';
 }
 
 export function formatDashboardValue(value: string | number, context?: string) {
@@ -150,6 +162,10 @@ export function formatDashboardValue(value: string | number, context?: string) {
 
   if (isPercentageContext(normalisedContext)) {
     return `${Number(value.toFixed(value % 1 ? 1 : 0))}%`;
+  }
+
+  if (isCurrencyContext(normalisedContext)) {
+    return `${currencySymbol(normalisedContext)}${formatCompactNumber(value)}`;
   }
 
   if (!isCurrencyContext(normalisedContext) && Math.abs(value) < 100000) {

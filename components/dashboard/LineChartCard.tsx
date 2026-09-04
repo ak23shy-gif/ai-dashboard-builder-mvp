@@ -2,7 +2,7 @@
 
 import { CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCompactNumber } from '@/lib/data/dataProcessor';
+import { formatDashboardValue } from '@/lib/data/dataProcessor';
 
 type LineChartCardProps = {
   title: string;
@@ -17,6 +17,11 @@ export function LineChartCard({ title, data, xKey, lines }: LineChartCardProps) 
   );
   const showDataLabels = safeData.length <= 12 && lines.length <= 2;
 
+  function formatLineValue(value: unknown, key?: string) {
+    const line = lines.find((item) => item.key === key || item.name === key);
+    return formatDashboardValue(Number(value), `${key || ''} ${line?.name || title}`);
+  }
+
   return (
     <Card className="min-w-0 overflow-hidden border-slate-200/80 shadow-none transition hover:border-primary/25 hover:shadow-md">
       <CardHeader className="border-b border-slate-100 pb-3">
@@ -29,8 +34,8 @@ export function LineChartCard({ title, data, xKey, lines }: LineChartCardProps) 
               <LineChart data={safeData} margin={{ left: -8, right: 18, top: 24, bottom: 0 }}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey={xKey} tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickFormatter={(value) => formatCompactNumber(Number(value))} tickLine={false} axisLine={false} fontSize={12} />
-                <Tooltip formatter={(value) => formatCompactNumber(Number(value))} />
+                <YAxis tickFormatter={(value) => formatLineValue(value)} tickLine={false} axisLine={false} fontSize={12} />
+                <Tooltip formatter={(value, name) => formatLineValue(value, String(name))} />
                 {lines.map((line) => (
                   <Line
                     dataKey={line.key}
@@ -46,7 +51,7 @@ export function LineChartCard({ title, data, xKey, lines }: LineChartCardProps) 
                         dataKey={line.key}
                         fill="hsl(var(--foreground))"
                         fontSize={11}
-                        formatter={(value: unknown) => formatCompactNumber(Number(value))}
+                        formatter={(value: unknown) => formatLineValue(value, line.key)}
                         position="top"
                       />
                     )}

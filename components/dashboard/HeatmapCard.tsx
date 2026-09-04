@@ -1,11 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCompactNumber } from '@/lib/data/dataProcessor';
+import { formatDashboardValue } from '@/lib/data/dataProcessor';
 import type { DashboardMetric } from '@/types/dashboard';
 
 type HeatmapCardProps = {
   title: string;
   data: Array<Record<string, string | number>>;
   metrics: Array<Exclude<DashboardMetric, 'conversionRate'>>;
+  metricLabels?: Partial<Record<Exclude<DashboardMetric, 'conversionRate'>, string>>;
 };
 
 const metricLabels = {
@@ -15,7 +16,7 @@ const metricLabels = {
   bookings: 'Outcomes',
 };
 
-export function HeatmapCard({ data, metrics, title }: HeatmapCardProps) {
+export function HeatmapCard({ data, metricLabels: customMetricLabels, metrics, title }: HeatmapCardProps) {
   const maxValue = Math.max(
     ...data.flatMap((row) => metrics.map((metric) => Number(row[metric]) || 0)),
     1,
@@ -37,19 +38,20 @@ export function HeatmapCard({ data, metrics, title }: HeatmapCardProps) {
             ))}
             {metrics.map((metric) => (
               <div className="contents" key={metric}>
-                <div className="flex items-center text-xs font-semibold text-slate-600">{metricLabels[metric]}</div>
+                <div className="flex items-center text-xs font-semibold text-slate-600">{customMetricLabels?.[metric] || metricLabels[metric]}</div>
                 {data.map((row) => {
                   const value = Number(row[metric]) || 0;
                   const intensity = Math.max(value / maxValue, 0.08);
+                  const context = `${metric} ${customMetricLabels?.[metric] || metricLabels[metric]}`;
 
                   return (
                     <div
                       className="flex h-10 items-center justify-center rounded-md text-xs font-semibold text-slate-950"
                       key={`${metric}-${row.month}`}
                       style={{ backgroundColor: `rgba(31, 122, 140, ${intensity})` }}
-                      title={`${metricLabels[metric]}: ${formatCompactNumber(value)}`}
+                      title={`${customMetricLabels?.[metric] || metricLabels[metric]}: ${formatDashboardValue(value, context)}`}
                     >
-                      {formatCompactNumber(value)}
+                      {formatDashboardValue(value, context)}
                     </div>
                   );
                 })}

@@ -2,7 +2,7 @@
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCompactNumber } from '@/lib/data/dataProcessor';
+import { formatDashboardValue } from '@/lib/data/dataProcessor';
 
 type AreaChartCardProps = {
   title: string;
@@ -16,6 +16,11 @@ export function AreaChartCard({ areas, data, title, xKey }: AreaChartCardProps) 
     areas.some((area) => typeof row[area.key] === 'number' && Number.isFinite(row[area.key] as number)),
   );
 
+  function formatAreaValue(value: unknown, key?: string) {
+    const area = areas.find((item) => item.key === key || item.name === key);
+    return formatDashboardValue(Number(value), `${key || ''} ${area?.name || title}`);
+  }
+
   return (
     <Card className="min-w-0 overflow-hidden border-slate-200/80 shadow-none transition hover:border-primary/25 hover:shadow-md">
       <CardHeader className="border-b border-slate-100 pb-3">
@@ -28,8 +33,8 @@ export function AreaChartCard({ areas, data, title, xKey }: AreaChartCardProps) 
               <AreaChart data={safeData} margin={{ left: -8, right: 12, top: 10, bottom: 0 }}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey={xKey} tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickFormatter={(value) => formatCompactNumber(Number(value))} tickLine={false} axisLine={false} fontSize={12} />
-                <Tooltip formatter={(value) => formatCompactNumber(Number(value))} />
+                <YAxis tickFormatter={(value) => formatAreaValue(value)} tickLine={false} axisLine={false} fontSize={12} />
+                <Tooltip formatter={(value, name) => formatAreaValue(value, String(name))} />
                 {areas.map((area) => (
                   <Area
                     dataKey={area.key}

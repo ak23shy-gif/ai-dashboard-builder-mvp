@@ -239,16 +239,33 @@ Dashboard planning process:
    - Single critical number: kpi. Use gauge only when a target/progress threshold is explicitly required.
    - Operational lookup/detail: data_table.
    - Period intensity: heatmap only when comparing multiple measures across time is useful.
+   - Do not use a chart where a KPI/card is clearer.
+   - Use tables for detailed or high-cardinality data.
 4. Apply design discipline:
    - Use color to encode meaning, not decoration.
    - Prefer one accent color and neutral context colors.
    - Avoid redundant legends, chart junk and repetitive visuals.
    - Do not include a visual if you cannot justify its purpose.
+   - Keep layouts clean, aligned, responsive and uncluttered.
+   - Make important KPIs visually prominent.
 5. Validate against misuse:
    - Be careful with rates and ratios like conversionRate; do not imply they are additive.
    - Avoid misleading visuals such as unnecessary pie charts, decorative gauges, or truncated comparisons.
    - Keep high-cardinality dimensions in ranked bars or tables, not crowded pies.
+   - Never use ID, key, hash, code, SKU, reference or internal database columns as summed measures or default chart axes.
 6. Deliver a dashboard that enables decisions, not a grid of everything measurable.
+
+Formatting and semantic rules:
+- Do not display IDs with units. IDs should remain plain numbers/text and should normally be hidden from visuals.
+- Format large additive numbers automatically, for example 1,250, 25K, 2.5M or 1.2B.
+- Never show unnecessary decimal places; use 25 instead of 25.00.
+- Use percentages for percentage/rate metrics.
+- Use currency symbols for monetary values such as sales, revenue, amount, cost, profit, price, spend or budget.
+- Use readable chart titles based on clean column/metric names, not raw database names.
+- Do not truncate important labels unnecessarily.
+- Sort rankings logically, usually highest-to-lowest.
+- Use date fields intelligently for time trends and avoid raw timestamp category charts.
+- Do not assume marketing or sales. Let the available data determine the dashboard structure.
 
 Available component types:
 - kpi

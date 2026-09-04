@@ -14,7 +14,7 @@ import { PieChartCard } from '@/components/dashboard/PieChartCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { formatCompactNumber, formatDashboardValue, type KpiSummary } from '@/lib/data/dataProcessor';
+import { formatDashboardValue, type KpiSummary } from '@/lib/data/dataProcessor';
 import type {
   BarChartComponentConfig,
   DashboardComponentConfig,
@@ -48,12 +48,33 @@ const metricIcons = {
   conversionRate: Percent,
 };
 
-function getMetricValue(summary: KpiSummary, metric: DashboardMetric) {
+function getMetricValue(summary: KpiSummary, metric: DashboardMetric, title: string) {
   if (metric === 'conversionRate') {
     return `${summary.conversionRate}%`;
   }
 
-  return formatCompactNumber(summary[metric]);
+  return formatDashboardValue(summary[metric], `${metric} ${title}`);
+}
+
+function metricLabelFromComponents(config: DashboardConfig, metric: DashboardMetric) {
+  const kpi = config.components.find(
+    (component): component is KpiComponentConfig => component.type === 'kpi' && component.metric === metric,
+  );
+
+  if (kpi) {
+    return kpi.title;
+  }
+
+  for (const component of config.components) {
+    if ('series' in component) {
+      const series = component.series.find((item) => item.metric === metric);
+      if (series) {
+        return series.label;
+      }
+    }
+  }
+
+  return metric;
 }
 
 function getDataset(
@@ -91,7 +112,7 @@ function renderKpi(component: KpiComponentConfig, summary: KpiSummary) {
       icon={Icon}
       title={component.title}
       trend={component.trend}
-      value={getMetricValue(summary, component.metric)}
+      value={getMetricValue(summary, component.metric, component.title)}
     />
   );
 }
@@ -126,37 +147,40 @@ function renderAreaChart(component: AreaChartComponentConfig, data: DashboardRen
   );
 }
 
-function renderBarChart(component: BarChartComponentConfig, data: DashboardRendererProps['data']) {
+function renderBarChart(component: BarChartComponentConfig, data: DashboardRendererProps['data'], config: DashboardConfig) {
   return (
     <BarChartCard
       color={component.color || '#1f7a8c'}
       data={getDataset(data, component.dataSource)}
       title={component.title}
+      valueLabel={metricLabelFromComponents(config, component.yAxis)}
       xKey={component.xAxis}
       yKey={component.yAxis}
     />
   );
 }
 
-function renderHorizontalBarChart(component: HorizontalBarChartComponentConfig, data: DashboardRendererProps['data']) {
+function renderHorizontalBarChart(component: HorizontalBarChartComponentConfig, data: DashboardRendererProps['data'], config: DashboardConfig) {
   return (
     <HorizontalBarChartCard
       color={component.color || '#1f7a8c'}
       data={getDataset(data, component.dataSource)}
       title={component.title}
+      valueLabel={metricLabelFromComponents(config, component.xAxis)}
       xKey={component.xAxis}
       yKey={component.yAxis}
     />
   );
 }
 
-function renderPieChart(component: PieChartComponentConfig, data: DashboardRendererProps['data']) {
+function renderPieChart(component: PieChartComponentConfig, data: DashboardRendererProps['data'], config: DashboardConfig) {
   return (
     <PieChartCard
       data={getDataset(data, component.dataSource)}
       nameKey={component.nameKey}
       title={component.title}
       valueKey={component.valueKey}
+      valueLabel={metricLabelFromComponents(config, component.valueKey)}
     />
   );
 }
@@ -181,8 +205,15 @@ function renderFunnel(component: FunnelComponentConfig, summary: KpiSummary) {
   return <FunnelChartCard stages={component.stages} summary={summary} title={component.title} />;
 }
 
-function renderHeatmap(component: HeatmapComponentConfig, data: DashboardRendererProps['data']) {
-  return <HeatmapCard data={getDataset(data, component.dataSource)} metrics={component.metrics} title={component.title} />;
+function renderHeatmap(component: HeatmapComponentConfig, data: DashboardRendererProps['data'], config: DashboardConfig) {
+  return (
+    <HeatmapCard
+      data={getDataset(data, component.dataSource)}
+      metricLabels={Object.fromEntries(component.metrics.map((metric) => [metric, metricLabelFromComponents(config, metric)]))}
+      metrics={component.metrics}
+      title={component.title}
+    />
+  );
 }
 
 function UnsupportedComponent({ title }: { title: string }) {
@@ -274,12 +305,12 @@ export function DashboardRenderer({
             />
             {component.type === 'line_chart' && renderLineChart(component, data)}
             {component.type === 'area_chart' && renderAreaChart(component, data)}
-            {component.type === 'bar_chart' && renderBarChart(component, data)}
-            {component.type === 'horizontal_bar_chart' && renderHorizontalBarChart(component, data)}
-            {component.type === 'pie_chart' && renderPieChart(component, data)}
+            {component.type === 'bar_chart' && renderBarChart(component, data, config)}
+            {component.type === 'horizontal_bar_chart' && renderHorizontalBarChart(component, data, config)}
+            {component.type === 'pie_chart' && renderPieChart(component, data, config)}
             {component.type === 'gauge' && renderGauge(component, summary)}
             {component.type === 'funnel' && renderFunnel(component, summary)}
-            {component.type === 'heatmap' && renderHeatmap(component, data)}
+            {component.type === 'heatmap' && renderHeatmap(component, data, config)}
             {component.type === 'data_table' && renderDataTable(component, data)}
             {![
               'line_chart',

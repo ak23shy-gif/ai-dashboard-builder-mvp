@@ -2,7 +2,7 @@
 
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCompactNumber } from '@/lib/data/dataProcessor';
+import { formatDashboardValue } from '@/lib/data/dataProcessor';
 
 type BarChartCardProps = {
   title: string;
@@ -10,9 +10,10 @@ type BarChartCardProps = {
   xKey: string;
   yKey: string;
   color?: string;
+  valueLabel?: string;
 };
 
-export function BarChartCard({ title, data, xKey, yKey, color = '#1f7a8c' }: BarChartCardProps) {
+export function BarChartCard({ title, data, xKey, yKey, color = '#1f7a8c', valueLabel }: BarChartCardProps) {
   const safeData = data
     .filter((row) => typeof row[yKey] === 'number' && Number.isFinite(row[yKey] as number))
     .slice(0, 20);
@@ -29,14 +30,14 @@ export function BarChartCard({ title, data, xKey, yKey, color = '#1f7a8c' }: Bar
               <BarChart data={safeData} margin={{ left: -8, right: 12, top: 22, bottom: 0 }}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey={xKey} tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickFormatter={(value) => formatCompactNumber(Number(value))} tickLine={false} axisLine={false} fontSize={12} />
-                <Tooltip formatter={(value) => formatCompactNumber(Number(value))} />
+                <YAxis tickFormatter={(value) => formatDashboardValue(Number(value), `${yKey} ${valueLabel || title}`)} tickLine={false} axisLine={false} fontSize={12} />
+                <Tooltip formatter={(value) => formatDashboardValue(Number(value), `${yKey} ${valueLabel || title}`)} />
                 <Bar dataKey={yKey} fill={color} radius={[6, 6, 0, 0]}>
                   <LabelList
                     dataKey={yKey}
                     fill="hsl(var(--foreground))"
                     fontSize={11}
-                    formatter={(value: unknown) => formatCompactNumber(Number(value))}
+                    formatter={(value: unknown) => formatDashboardValue(Number(value), `${yKey} ${valueLabel || title}`)}
                     position="top"
                   />
                 </Bar>
