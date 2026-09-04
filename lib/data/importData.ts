@@ -257,13 +257,65 @@ export function normaliseRawRows(rawRows: RawRow[]) {
 function parseCsvText(text: string): RawRow[] {
   const workbook = XLSX.read(text, { type: 'string', sheetRows: maxImportedRows + 1 });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: '' });
+  return sheetToJsonRows(sheet);
 }
 
 function parseExcelBuffer(buffer: ArrayBuffer): RawRow[] {
   const workbook = XLSX.read(buffer, { type: 'array', sheetRows: maxImportedRows + 1 });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: '' });
+  return sheetToJsonRows(sheet);
+}
+
+function sheetToJsonRows(sheet: XLSX.WorkSheet | undefined): RawRow[] {
+  if (!sheet) {
+    return [];
+  }
+
+  const safeRef = getSafeSheetRange(sheet);
+  if (!safeRef) {
+    return [];
+  }
+
+  try {
+    return XLSX.utils.sheet_to_json<RawRow>(sheet, {
+      defval: '',
+      blankrows: false,
+      range: safeRef,
+    });
+  } catch (error) {
+    if (error instanceof RangeError || String(error).includes('Invalid array length')) {
+      throw new Error('This workbook has a very large or sparse used range. Please clear unused rows/columns in Excel or save the active table as CSV and upload again.');
+    }
+
+    throw error;
+  }
+}
+
+function getSafeSheetRange(sheet: XLSX.WorkSheet) {
+  const cellRefs = Object.keys(sheet).filter((key) => /^[A-Z]+[0-9]+$/i.test(key));
+
+  if (cellRefs.length) {
+    const cells = cellRefs.map((cellRef) => XLSX.utils.decode_cell(cellRef));
+    const minRow = Math.min(...cells.map((cell) => cell.r));
+    const minCol = Math.min(...cells.map((cell) => cell.c));
+    const maxRow = Math.min(Math.max(...cells.map((cell) => cell.r)), minRow + maxImportedRows);
+    const maxCol = Math.min(Math.max(...cells.map((cell) => cell.c)), minCol + maxImportColumns - 1);
+
+    return XLSX.utils.encode_range({
+      s: { r: minRow, c: minCol },
+      e: { r: maxRow, c: maxCol },
+    });
+  }
+
+  if (!sheet['!ref']) {
+    return null;
+  }
+
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  range.e.r = Math.min(range.e.r, range.s.r + maxImportedRows);
+  range.e.c = Math.min(range.e.c, range.s.c + maxImportColumns - 1);
+
+  return XLSX.utils.encode_range(range);
 }
 
 export async function importDashboardFile(file: File): Promise<ImportedDataset> {
