@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "regions": ["lhr1"],
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  }
+}

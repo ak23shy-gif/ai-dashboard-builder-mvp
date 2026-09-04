@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 29% 97%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --muted: 214 32% 94%;
+  --muted-foreground: 215 16% 47%;
+  --primary: 193 73% 32%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 34 68% 53%;
+  --accent-foreground: 216 29% 14%;
+  --border: 214 27% 88%;
+  --radius: 0.5rem;
+}
+
+[data-theme='dark'] {
+  --background: 222 47% 8%;
+  --foreground: 210 40% 96%;
+  --card: 222 38% 12%;
+  --card-foreground: 210 40% 96%;
+  --muted: 217 33% 18%;
+  --muted-foreground: 215 20% 70%;
+  --primary: 190 70% 45%;
+  --primary-foreground: 222 47% 8%;
+  --accent: 34 85% 58%;
+  --accent-foreground: 222 47% 8%;
+  --border: 217 33% 24%;
+}
+
+[data-theme='midnight'] {
+  --background: 214 70% 7%;
+  --foreground: 190 45% 94%;
+  --card: 214 58% 11%;
+  --card-foreground: 190 45% 94%;
+  --muted: 210 55% 17%;
+  --muted-foreground: 197 24% 70%;
+  --primary: 187 95% 43%;
+  --primary-foreground: 214 70% 7%;
+  --accent: 155 70% 45%;
+  --accent-foreground: 214 70% 7%;
+  --border: 204 45% 24%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "tnum";
+}
+
+[data-theme='dark'] .bg-white,
+[data-theme='midnight'] .bg-white,
+[data-theme='dark'] .bg-slate-50,
+[data-theme='midnight'] .bg-slate-50 {
+  background-color: hsl(var(--card));
+}
+
+[data-theme='dark'] .bg-slate-100,
+[data-theme='midnight'] .bg-slate-100 {
+  background-color: hsl(var(--muted));
+}
+
+[data-theme='dark'] .border-slate-100,
+[data-theme='midnight'] .border-slate-100,
+[data-theme='dark'] .border-slate-200,
+[data-theme='midnight'] .border-slate-200,
+[data-theme='dark'] .border-slate-300,
+[data-theme='midnight'] .border-slate-300 {
+  border-color: hsl(var(--border));
+}
+
+[data-theme='dark'] .text-slate-950,
+[data-theme='midnight'] .text-slate-950,
+[data-theme='dark'] .text-slate-900,
+[data-theme='midnight'] .text-slate-900,
+[data-theme='dark'] .text-slate-800,
+[data-theme='midnight'] .text-slate-800,
+[data-theme='dark'] .text-slate-700,
+[data-theme='midnight'] .text-slate-700 {
+  color: hsl(var(--foreground));
+}
+
+[data-theme='dark'] .text-slate-500,
+[data-theme='midnight'] .text-slate-500,
+[data-theme='dark'] .text-muted-foreground,
+[data-theme='midnight'] .text-muted-foreground {
+  color: hsl(var(--muted-foreground));
+}
+
+[data-theme='dark'] .recharts-cartesian-grid line,
+[data-theme='midnight'] .recharts-cartesian-grid line {
+  stroke: hsl(var(--border));
+}
+
+[data-theme='dark'] .recharts-text,
+[data-theme='midnight'] .recharts-text,
+[data-theme='dark'] .recharts-label-list text,
+[data-theme='midnight'] .recharts-label-list text {
+  fill: hsl(var(--muted-foreground));
+}
+
+[data-theme='dark'] .recharts-default-tooltip,
+[data-theme='midnight'] .recharts-default-tooltip {
+  background-color: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+}

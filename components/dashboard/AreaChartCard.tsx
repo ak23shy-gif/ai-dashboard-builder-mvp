@@ -1,0 +1,54 @@
+'use client';
+
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCompactNumber } from '@/lib/data/dataProcessor';
+
+type AreaChartCardProps = {
+  title: string;
+  data: Array<Record<string, string | number>>;
+  xKey: string;
+  areas: Array<{ key: string; name: string; color: string }>;
+};
+
+export function AreaChartCard({ areas, data, title, xKey }: AreaChartCardProps) {
+  const safeData = data.filter((row) =>
+    areas.some((area) => typeof row[area.key] === 'number' && Number.isFinite(row[area.key] as number)),
+  );
+
+  return (
+    <Card className="min-w-0 overflow-hidden border-slate-200/80 shadow-none transition hover:border-primary/25 hover:shadow-md">
+      <CardHeader className="border-b border-slate-100 pb-3">
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[260px]">
+          {safeData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={safeData} margin={{ left: -8, right: 12, top: 10, bottom: 0 }}>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey={xKey} tickLine={false} axisLine={false} fontSize={12} />
+                <YAxis tickFormatter={(value) => formatCompactNumber(Number(value))} tickLine={false} axisLine={false} fontSize={12} />
+                <Tooltip formatter={(value) => formatCompactNumber(Number(value))} />
+                {areas.map((area) => (
+                  <Area
+                    dataKey={area.key}
+                    fill={area.color}
+                    fillOpacity={0.16}
+                    key={area.key}
+                    name={area.name}
+                    stroke={area.color}
+                    strokeWidth={2}
+                    type="monotone"
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No chart data available</div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
