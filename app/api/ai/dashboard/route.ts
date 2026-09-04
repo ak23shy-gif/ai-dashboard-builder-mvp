@@ -5,6 +5,9 @@ import { generateLocalDashboard } from '@/lib/ai/demoDashboardGenerator';
 import type { DashboardConfig } from '@/types/dashboard';
 
 export const runtime = 'nodejs';
+export const maxDuration = 10;
+
+const providerTimeoutMs = 6500;
 
 type DashboardApiRequest = {
   prompt?: string;
@@ -40,6 +43,13 @@ type GeminiResponse = {
     message?: string;
   };
 };
+
+function timeoutSignal() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+
+  return { signal: controller.signal, timeout };
+}
 
 async function readProviderJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -93,8 +103,10 @@ function localPlannerResponse(prompt: string, currentDashboard: DashboardConfig 
 }
 
 async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardConfig) {
+  const { signal, timeout } = timeoutSignal();
   const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
+    signal,
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
@@ -120,7 +132,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
         },
       },
     }),
-  });
+  }).finally(() => clearTimeout(timeout));
 
   const result = await readProviderJson<OpenAIResponse>(openaiResponse);
 
@@ -152,10 +164,12 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
 
 async function generateWithGemini(prompt: string, currentDashboard?: DashboardConfig) {
   const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+  const { signal, timeout } = timeoutSignal();
   const geminiResponse = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -179,7 +193,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
         },
       }),
     },
-  );
+  ).finally(() => clearTimeout(timeout));
 
   const result = await readProviderJson<GeminiResponse>(geminiResponse);
 
