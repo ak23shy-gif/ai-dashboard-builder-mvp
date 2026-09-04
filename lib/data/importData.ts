@@ -81,6 +81,34 @@ function findTextColumns(rows: RawRow[], columns: string[]) {
   );
 }
 
+function distinctCount(rows: RawRow[], column: string) {
+  return new Set(
+    rows
+      .map((row) => String(row[column] ?? '').trim())
+      .filter(Boolean),
+  ).size;
+}
+
+function isDateLikeColumn(column: string) {
+  const normalised = normaliseHeader(column);
+  return [...columnAliases.date, ...columnAliases.month, ...columnAliases.year].some(
+    (alias) => normalised === alias || matchesAlias(normalised, alias),
+  );
+}
+
+function findCategoricalColumn(rows: RawRow[], columns: string[], usedColumns: Array<string | undefined> = []) {
+  const candidates = columns
+    .filter((column) => !usedColumns.includes(column))
+    .filter((column) => !isDateLikeColumn(column))
+    .map((column) => ({
+      column,
+      distinctValues: distinctCount(rows, column),
+    }))
+    .filter(({ distinctValues }) => distinctValues > 1 && distinctValues <= Math.min(50, Math.max(8, rows.length * 0.6)));
+
+  return candidates.sort((a, b) => a.distinctValues - b.distinctValues)[0]?.column;
+}
+
 function firstAvailable(columns: string[], usedColumns: Array<string | undefined>) {
   return columns.find((column) => !usedColumns.includes(column));
 }
@@ -209,9 +237,14 @@ function parseDateParts(row: RawRow, columns: string[]) {
 export function normaliseRawRows(rawRows: RawRow[]) {
   const columns = Object.keys(rawRows[0] || {}).slice(0, maxImportColumns);
   const numericColumns = findNumericColumns(rawRows, columns);
-  const textColumns = findTextColumns(rawRows, columns);
-  const brandColumn = findColumn(columns, columnAliases.brand) || textColumns[0];
-  const channelColumn = findColumn(columns, columnAliases.channel) || textColumns.find((column) => column !== brandColumn) || brandColumn;
+  const textColumns = findTextColumns(rawRows, columns).filter((column) => !isDateLikeColumn(column));
+  const aliasBrandColumn = findColumn(textColumns, columnAliases.brand);
+  const aliasChannelColumn = findColumn(textColumns, columnAliases.channel);
+  const brandColumn = aliasBrandColumn || findCategoricalColumn(rawRows, textColumns);
+  const channelColumn =
+    aliasChannelColumn ||
+    findCategoricalColumn(rawRows, textColumns, [brandColumn]) ||
+    brandColumn;
   const leadsColumn = findColumn(columns, columnAliases.leads) || numericColumns[0];
   const valuationsColumn = findColumn(columns, columnAliases.valuations) || firstAvailable(numericColumns, [leadsColumn]);
   const sessionsColumn = findColumn(columns, columnAliases.sessions) || firstAvailable(numericColumns, [leadsColumn, valuationsColumn]);

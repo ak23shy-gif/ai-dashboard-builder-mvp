@@ -23,6 +23,8 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
   const outcomeMeasure = cleanLabel(imported.mappedColumns.bookings, 'Completed Outcomes');
   const primaryDimensionCount = new Set(imported.rows.map((row) => row.brand)).size;
   const secondaryDimensionCount = new Set(imported.rows.map((row) => row.channel)).size;
+  const hasPrimaryDimension = Boolean(imported.mappedColumns.brand) && primaryDimensionCount > 1;
+  const hasSecondaryDimension = Boolean(imported.mappedColumns.channel) && secondaryDimensionCount > 1;
   const shouldShowSecondaryShare = secondaryDimensionCount > 1 && secondaryDimensionCount <= 5;
   const shouldShowPrimaryShare = primaryDimensionCount > 1 && primaryDimensionCount <= 5;
 
@@ -91,33 +93,41 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
           { metric: 'sessions', label: activityMeasure, color: '#7c3aed' },
         ],
       },
-      {
-        id: 'primary_by_secondary_dimension',
-        type: 'horizontal_bar_chart',
-        title: `Top ${secondaryDimension} by ${primaryMeasure}`,
-        dataSource: 'channel',
-        xAxis: 'leads',
-        yAxis: 'channel',
-        color: '#7c3aed',
-      },
-      {
-        id: 'qualified_by_primary_dimension',
-        type: 'bar_chart',
-        title: `${qualifiedMeasure} by ${primaryDimension}`,
-        dataSource: 'brand',
-        xAxis: 'brand',
-        yAxis: 'valuations',
-        color: '#1f7a8c',
-      },
-      {
-        id: 'outcomes_by_secondary_dimension',
-        type: 'horizontal_bar_chart',
-        title: `Top ${secondaryDimension} by ${outcomeMeasure}`,
-        dataSource: 'channel',
-        xAxis: 'bookings',
-        yAxis: 'channel',
-        color: '#4f7f52',
-      },
+      ...(hasSecondaryDimension
+        ? [
+            {
+              id: 'primary_by_secondary_dimension',
+              type: 'horizontal_bar_chart' as const,
+              title: `Top ${secondaryDimension} by ${primaryMeasure}`,
+              dataSource: 'channel' as const,
+              xAxis: 'leads' as const,
+              yAxis: 'channel' as const,
+              color: '#7c3aed',
+            },
+            {
+              id: 'outcomes_by_secondary_dimension',
+              type: 'horizontal_bar_chart' as const,
+              title: `Top ${secondaryDimension} by ${outcomeMeasure}`,
+              dataSource: 'channel' as const,
+              xAxis: 'bookings' as const,
+              yAxis: 'channel' as const,
+              color: '#4f7f52',
+            },
+          ]
+        : []),
+      ...(hasPrimaryDimension
+        ? [
+            {
+              id: 'qualified_by_primary_dimension',
+              type: 'bar_chart' as const,
+              title: `${qualifiedMeasure} by ${primaryDimension}`,
+              dataSource: 'brand' as const,
+              xAxis: 'brand' as const,
+              yAxis: 'valuations' as const,
+              color: '#1f7a8c',
+            },
+          ]
+        : []),
       {
         id: 'period_heatmap',
         type: 'heatmap',
@@ -125,7 +135,7 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
         dataSource: 'monthly',
         metrics: ['leads', 'valuations', 'sessions', 'bookings'],
       },
-      ...(shouldShowSecondaryShare
+      ...(hasSecondaryDimension && shouldShowSecondaryShare
         ? [
             {
               id: 'composition_secondary_dimension',
@@ -137,7 +147,7 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
             },
           ]
         : []),
-      ...(shouldShowPrimaryShare
+      ...(hasPrimaryDimension && shouldShowPrimaryShare
         ? [
             {
               id: 'composition_primary_dimension',
@@ -149,26 +159,47 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
             },
           ]
         : []),
+      ...(hasSecondaryDimension
+        ? [
+            {
+              id: 'secondary_dimension_table',
+              type: 'data_table' as const,
+              title: `${secondaryDimension} Performance`,
+              dataSource: 'channel' as const,
+              columns: [
+                { key: 'channel', label: secondaryDimension },
+                { key: 'leads', label: primaryMeasure },
+                { key: 'valuations', label: qualifiedMeasure },
+                { key: 'sessions', label: activityMeasure },
+                { key: 'bookings', label: outcomeMeasure },
+              ],
+            },
+          ]
+        : []),
+      ...(hasPrimaryDimension
+        ? [
+            {
+              id: 'primary_dimension_table',
+              type: 'data_table' as const,
+              title: `${primaryDimension} Performance`,
+              dataSource: 'brand' as const,
+              columns: [
+                { key: 'brand', label: primaryDimension },
+                { key: 'leads', label: primaryMeasure },
+                { key: 'valuations', label: qualifiedMeasure },
+                { key: 'sessions', label: activityMeasure },
+                { key: 'bookings', label: outcomeMeasure },
+              ],
+            },
+          ]
+        : []),
       {
-        id: 'secondary_dimension_table',
+        id: 'period_table',
         type: 'data_table',
-        title: `${secondaryDimension} Performance`,
-        dataSource: 'channel',
+        title: 'Period Performance',
+        dataSource: 'monthly',
         columns: [
-          { key: 'channel', label: secondaryDimension },
-          { key: 'leads', label: primaryMeasure },
-          { key: 'valuations', label: qualifiedMeasure },
-          { key: 'sessions', label: activityMeasure },
-          { key: 'bookings', label: outcomeMeasure },
-        ],
-      },
-      {
-        id: 'primary_dimension_table',
-        type: 'data_table',
-        title: `${primaryDimension} Performance`,
-        dataSource: 'brand',
-        columns: [
-          { key: 'brand', label: primaryDimension },
+          { key: 'month', label: 'Period' },
           { key: 'leads', label: primaryMeasure },
           { key: 'valuations', label: qualifiedMeasure },
           { key: 'sessions', label: activityMeasure },
