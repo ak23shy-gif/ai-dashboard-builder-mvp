@@ -255,13 +255,30 @@ export function normaliseRawRows(rawRows: RawRow[]) {
 }
 
 function parseCsvText(text: string): RawRow[] {
-  const workbook = XLSX.read(text, { type: 'string', sheetRows: maxImportedRows + 1 });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return sheetToJsonRows(sheet);
+  const rows = parseDelimitedRows(text);
+  const headers = rows[0]?.slice(0, maxImportColumns).map((header, index) => normaliseDisplayHeader(header, index)) || [];
+
+  return rows
+    .slice(1, maxImportedRows + 1)
+    .map((row) =>
+      headers.reduce<RawRow>((item, header, index) => {
+        item[header] = row[index] ?? '';
+        return item;
+      }, {}),
+    )
+    .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
 }
 
 function parseExcelBuffer(buffer: ArrayBuffer): RawRow[] {
-  const workbook = XLSX.read(buffer, { type: 'array', sheetRows: maxImportedRows + 1 });
+  const workbook = XLSX.read(buffer, {
+    type: 'array',
+    sheetRows: maxImportedRows + 1,
+    cellDates: true,
+    cellHTML: false,
+    cellNF: false,
+    cellStyles: false,
+    WTF: false,
+  });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   return sheetToJsonRows(sheet);
 }
@@ -271,51 +288,139 @@ function sheetToJsonRows(sheet: XLSX.WorkSheet | undefined): RawRow[] {
     return [];
   }
 
-  const safeRef = getSafeSheetRange(sheet);
-  if (!safeRef) {
+  const bounds = getRealSheetBounds(sheet);
+  if (!bounds) {
     return [];
   }
 
-  try {
-    return XLSX.utils.sheet_to_json<RawRow>(sheet, {
-      defval: '',
-      blankrows: false,
-      range: safeRef,
-    });
-  } catch (error) {
-    if (error instanceof RangeError || String(error).includes('Invalid array length')) {
-      throw new Error('This workbook has a very large or sparse used range. Please clear unused rows/columns in Excel or save the active table as CSV and upload again.');
-    }
-
-    throw error;
+  const headers: string[] = [];
+  for (let column = bounds.minCol; column <= bounds.maxCol; column += 1) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: bounds.headerRow, c: column })] as XLSX.CellObject | undefined;
+    headers.push(normaliseDisplayHeader(readCellValue(cell), column - bounds.minCol));
   }
+
+  const rows: RawRow[] = [];
+  for (let rowNumber = bounds.headerRow + 1; rowNumber <= bounds.maxRow; rowNumber += 1) {
+    const row = headers.reduce<RawRow>((item, header, index) => {
+      const cell = sheet[XLSX.utils.encode_cell({ r: rowNumber, c: bounds.minCol + index })] as XLSX.CellObject | undefined;
+      item[header] = readCellValue(cell);
+      return item;
+    }, {});
+
+    if (Object.values(row).some((value) => String(value ?? '').trim())) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
 }
 
-function getSafeSheetRange(sheet: XLSX.WorkSheet) {
-  const cellRefs = Object.keys(sheet).filter((key) => /^[A-Z]+[0-9]+$/i.test(key));
+function getRealSheetBounds(sheet: XLSX.WorkSheet) {
+  let minRow = Number.POSITIVE_INFINITY;
+  let minCol = Number.POSITIVE_INFINITY;
+  let maxRow = 0;
+  let maxCol = 0;
+  let hasCell = false;
 
-  if (cellRefs.length) {
-    const cells = cellRefs.map((cellRef) => XLSX.utils.decode_cell(cellRef));
-    const minRow = Math.min(...cells.map((cell) => cell.r));
-    const minCol = Math.min(...cells.map((cell) => cell.c));
-    const maxRow = Math.min(Math.max(...cells.map((cell) => cell.r)), minRow + maxImportedRows);
-    const maxCol = Math.min(Math.max(...cells.map((cell) => cell.c)), minCol + maxImportColumns - 1);
+  for (const key of Object.keys(sheet)) {
+    if (!/^[A-Z]+[0-9]+$/i.test(key)) {
+      continue;
+    }
 
-    return XLSX.utils.encode_range({
-      s: { r: minRow, c: minCol },
-      e: { r: maxRow, c: maxCol },
-    });
+    const cell = sheet[key] as XLSX.CellObject | undefined;
+    if (String(readCellValue(cell) ?? '').trim() === '') {
+      continue;
+    }
+
+    const decoded = XLSX.utils.decode_cell(key);
+    minRow = Math.min(minRow, decoded.r);
+    minCol = Math.min(minCol, decoded.c);
+    maxRow = Math.max(maxRow, decoded.r);
+    maxCol = Math.max(maxCol, decoded.c);
+    hasCell = true;
   }
 
-  if (!sheet['!ref']) {
+  if (!hasCell) {
     return null;
   }
 
-  const range = XLSX.utils.decode_range(sheet['!ref']);
-  range.e.r = Math.min(range.e.r, range.s.r + maxImportedRows);
-  range.e.c = Math.min(range.e.c, range.s.c + maxImportColumns - 1);
+  return {
+    headerRow: minRow,
+    minCol,
+    maxRow: Math.min(maxRow, minRow + maxImportedRows),
+    maxCol: Math.min(maxCol, minCol + maxImportColumns - 1),
+  };
+}
 
-  return XLSX.utils.encode_range(range);
+function readCellValue(cell: XLSX.CellObject | undefined) {
+  if (!cell) {
+    return '';
+  }
+
+  if (cell.v instanceof Date) {
+    return cell.v;
+  }
+
+  return cell.v ?? cell.w ?? '';
+}
+
+function normaliseDisplayHeader(value: unknown, index: number) {
+  const header = String(value ?? '').trim();
+  return header || `Column ${index + 1}`;
+}
+
+function parseDelimitedRows(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const nextCharacter = text[index + 1];
+
+    if (character === '"' && inQuotes && nextCharacter === '"') {
+      value += '"';
+      index += 1;
+      continue;
+    }
+
+    if (character === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (character === ',' && !inQuotes) {
+      row.push(value);
+      value = '';
+      continue;
+    }
+
+    if ((character === '\n' || character === '\r') && !inQuotes) {
+      if (character === '\r' && nextCharacter === '\n') {
+        index += 1;
+      }
+
+      row.push(value);
+      value = '';
+
+      if (rows.length <= maxImportedRows && row.some((cell) => cell.trim())) {
+        rows.push(row.slice(0, maxImportColumns));
+      }
+
+      row = [];
+      continue;
+    }
+
+    value += character;
+  }
+
+  row.push(value);
+  if (rows.length <= maxImportedRows && row.some((cell) => cell.trim())) {
+    rows.push(row.slice(0, maxImportColumns));
+  }
+
+  return rows;
 }
 
 export async function importDashboardFile(file: File): Promise<ImportedDataset> {
@@ -327,9 +432,21 @@ export async function importDashboardFile(file: File): Promise<ImportedDataset> 
     throw new Error('Please upload a CSV, XLS or XLSX file.');
   }
 
-  const rawRows = isExcel
-    ? parseExcelBuffer(await file.arrayBuffer())
-    : parseCsvText(await file.text());
+  let rawRows: RawRow[];
+
+  try {
+    rawRows = isExcel
+      ? parseExcelBuffer(await file.arrayBuffer())
+      : parseCsvText(await file.text());
+  } catch (error) {
+    if (error instanceof RangeError || String(error).includes('Invalid array length')) {
+      throw new Error(
+        'This file has an unusually large or sparse used range. Please open it in Excel, select the real data table, save it as a fresh CSV/XLSX file, then upload that cleaned file.',
+      );
+    }
+
+    throw error;
+  }
   const limitedRawRows = rawRows.slice(0, maxImportedRows);
   const { columns, mappedColumns, rows } = normaliseRawRows(limitedRawRows);
 
