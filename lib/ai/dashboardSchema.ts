@@ -114,6 +114,84 @@ const allowedComponentTypes = new Set([
   'data_table',
 ]);
 
+const additiveMetrics = new Set(['leads', 'valuations', 'sessions', 'bookings']);
+const allMetrics = new Set([...additiveMetrics, 'conversionRate']);
+const dimensions = new Set(['brand', 'channel']);
+const dataSources = new Set(['brand', 'channel', 'monthly', 'summary']);
+
+function sanitizeComponent(component: any) {
+  if (!component || typeof component !== 'object' || !allowedComponentTypes.has(String(component.type))) {
+    return null;
+  }
+
+  if (component.type === 'kpi') {
+    return allMetrics.has(component.metric) ? component : null;
+  }
+
+  if (component.type === 'line_chart' || component.type === 'area_chart') {
+    const series = Array.isArray(component.series)
+      ? component.series.filter((item: any) => additiveMetrics.has(item?.metric))
+      : [];
+
+    return component.dataSource === 'monthly' && component.xAxis === 'month' && series.length
+      ? { ...component, series }
+      : null;
+  }
+
+  if (component.type === 'bar_chart') {
+    return dimensions.has(component.xAxis) &&
+      dataSources.has(component.dataSource) &&
+      component.dataSource === component.xAxis &&
+      additiveMetrics.has(component.yAxis)
+      ? component
+      : null;
+  }
+
+  if (component.type === 'horizontal_bar_chart') {
+    return dimensions.has(component.yAxis) &&
+      dataSources.has(component.dataSource) &&
+      component.dataSource === component.yAxis &&
+      additiveMetrics.has(component.xAxis)
+      ? component
+      : null;
+  }
+
+  if (component.type === 'pie_chart') {
+    return dimensions.has(component.nameKey) &&
+      dataSources.has(component.dataSource) &&
+      component.dataSource === component.nameKey &&
+      additiveMetrics.has(component.valueKey)
+      ? component
+      : null;
+  }
+
+  if (component.type === 'heatmap') {
+    const metrics = Array.isArray(component.metrics)
+      ? component.metrics.filter((metric: string) => additiveMetrics.has(metric))
+      : [];
+
+    return component.dataSource === 'monthly' && metrics.length ? { ...component, metrics } : null;
+  }
+
+  if (component.type === 'funnel') {
+    const stages = Array.isArray(component.stages)
+      ? component.stages.filter((stage: any) => additiveMetrics.has(stage?.metric))
+      : [];
+
+    return component.dataSource === 'summary' && stages.length >= 2 ? { ...component, stages } : null;
+  }
+
+  if (component.type === 'gauge') {
+    return allMetrics.has(component.metric) ? component : null;
+  }
+
+  if (component.type === 'data_table') {
+    return dataSources.has(component.dataSource) ? component : null;
+  }
+
+  return null;
+}
+
 export function validateDashboardConfig(value: unknown): DashboardConfig {
   if (!value || typeof value !== 'object') {
     return defaultDashboardConfig;
@@ -121,7 +199,7 @@ export function validateDashboardConfig(value: unknown): DashboardConfig {
 
   const candidate = value as Partial<DashboardConfig>;
   const components = Array.isArray(candidate.components)
-    ? candidate.components.filter((component) => allowedComponentTypes.has(String(component.type)))
+    ? candidate.components.map(sanitizeComponent).filter(Boolean)
     : defaultDashboardConfig.components;
 
   return {

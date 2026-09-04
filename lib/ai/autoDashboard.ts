@@ -14,13 +14,44 @@ function cleanLabel(value: string | undefined, fallback: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function normaliseName(value: string | undefined) {
+  return String(value ?? '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isRevenueLike(value: string | undefined) {
+  return /\b(sales|revenue|amount|value|gross sales|net sales)\b/.test(normaliseName(value));
+}
+
+function isCostLike(value: string | undefined) {
+  return /\b(cost|expense|spend|budget)\b/.test(normaliseName(value));
+}
+
+function isUnitLike(value: string | undefined) {
+  return /\b(unit|units|quantity|qty|items|volume)\b/.test(normaliseName(value));
+}
+
 export function createDashboardFromImportedDataset(imported: ImportedDataset): DashboardConfig {
   const primaryDimension = cleanLabel(imported.mappedColumns.brand, 'Primary Dimension');
   const secondaryDimension = cleanLabel(imported.mappedColumns.channel, 'Secondary Dimension');
   const primaryMeasure = cleanLabel(imported.mappedColumns.leads, 'Primary Volume');
   const qualifiedMeasure = cleanLabel(imported.mappedColumns.valuations, 'Qualified Records');
   const activityMeasure = cleanLabel(imported.mappedColumns.sessions, 'Activity Volume');
-  const outcomeMeasure = cleanLabel(imported.mappedColumns.bookings, 'Completed Outcomes');
+  const hasDerivedProfit =
+    !imported.mappedColumns.bookings &&
+    isRevenueLike(imported.mappedColumns.leads) &&
+    isCostLike(imported.mappedColumns.valuations);
+  const outcomeMeasure = hasDerivedProfit ? 'Gross Profit' : cleanLabel(imported.mappedColumns.bookings, 'Completed Outcomes');
+  const dashboardTitle = isRevenueLike(imported.mappedColumns.leads)
+    ? 'Commercial Performance Overview'
+    : isUnitLike(imported.mappedColumns.sessions)
+      ? 'Operational Performance Overview'
+      : 'Data Performance Overview';
+  const completionRateLabel = hasDerivedProfit ? 'Profit Rate' : 'Outcome Rate';
   const primaryDimensionCount = new Set(imported.rows.map((row) => row.brand)).size;
   const secondaryDimensionCount = new Set(imported.rows.map((row) => row.channel)).size;
   const hasPrimaryDimension = Boolean(imported.mappedColumns.brand) && primaryDimensionCount > 1;
@@ -30,7 +61,7 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
 
   return validateDashboardConfig({
     id: `uploaded-${Date.now()}`,
-    title: 'Data Performance Overview',
+    title: dashboardTitle,
     description: `Generated from ${imported.fileName}. Assumption: this dashboard is for an operations or analyst audience reviewing performance and drivers; it leads with headline measures, then explains movement and category differences, then provides detail for follow-up.`,
     filters: [
       { id: 'brand_filter', type: 'select_filter', field: 'brand', title: primaryDimension },
@@ -65,7 +96,7 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
       {
         id: 'kpi_completion_rate',
         type: 'kpi',
-        title: 'Outcome Rate',
+        title: completionRateLabel,
         metric: 'conversionRate',
         change: 'Non-additive: recalculated after filters',
         trend: 'up',
@@ -73,7 +104,7 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
       {
         id: 'trend_core_measures',
         type: 'area_chart',
-        title: 'Core Measures by Period',
+        title: `${primaryMeasure}, ${qualifiedMeasure} and ${outcomeMeasure} by Period`,
         dataSource: 'monthly',
         xAxis: 'month',
         layout: { className: 'xl:col-span-2' },
@@ -86,7 +117,7 @@ export function createDashboardFromImportedDataset(imported: ImportedDataset): D
       {
         id: 'activity_trend',
         type: 'line_chart',
-        title: `${activityMeasure} Trend`,
+        title: `${activityMeasure} by Period`,
         dataSource: 'monthly',
         xAxis: 'month',
         series: [

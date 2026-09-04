@@ -33,8 +33,8 @@ const columnAliases = {
   date: ['date', 'created date', 'created at', 'created on', 'closed date', 'resolved date', 'order date', 'invoice date', 'month date', 'period', 'timestamp'],
   month: ['month', 'month name', 'period month', 'created month', 'month year', 'reporting month'],
   year: ['year'],
-  brand: ['brand', 'company', 'business', 'client', 'category', 'team', 'department'],
-  channel: ['channel', 'source', 'traffic source', 'medium', 'priority', 'severity', 'status', 'agent'],
+  brand: ['brand', 'company', 'business', 'client', 'category', 'product category', 'team', 'department'],
+  channel: ['channel', 'source', 'traffic source', 'medium', 'priority', 'severity', 'status', 'agent', 'region', 'segment', 'market', 'location', 'country'],
   leads: ['leads', 'lead', 'total leads', 'lead count', 'tickets', 'tickets created', 'created', 'cases', 'requests'],
   valuations: ['valuations', 'valuation', 'total valuations', 'valuation count', 'tickets closed', 'closed', 'resolved'],
   sessions: ['sessions', 'website sessions', 'visits', 'traffic', 'views', 'volume'],
@@ -103,6 +103,24 @@ function isDateLikeColumn(column: string) {
 function isIdentifierColumn(column: string) {
   const normalised = normaliseHeader(column);
   return identifierAliases.some((alias) => normalised === alias || matchesAlias(normalised, alias));
+}
+
+function isCurrencyLikeColumn(column: string | undefined) {
+  if (!column) {
+    return false;
+  }
+
+  const normalised = normaliseHeader(column);
+  return valueMeasureAliases.some((alias) => normalised === alias || matchesAlias(normalised, alias));
+}
+
+function isCostLikeColumn(column: string | undefined) {
+  if (!column) {
+    return false;
+  }
+
+  const normalised = normaliseHeader(column);
+  return /\b(cost|expense|spend|budget)\b/.test(normalised);
 }
 
 function findCategoricalColumn(rows: RawRow[], columns: string[], usedColumns: Array<string | undefined> = []) {
@@ -275,7 +293,12 @@ export function normaliseRawRows(rawRows: RawRow[]) {
       const leads = leadsColumn ? toNumber(row[leadsColumn]) : 0;
       const valuations = valuationsColumn ? toNumber(row[valuationsColumn]) : 0;
       const sessions = sessionsColumn ? toNumber(row[sessionsColumn]) : Math.max(leads * 18, valuations * 8);
-      const bookings = bookingsColumn ? toNumber(row[bookingsColumn]) : Math.round(Math.max(valuations * 0.22, leads * 0.08));
+      const shouldDeriveProfit = !bookingsColumn && isCurrencyLikeColumn(leadsColumn) && isCostLikeColumn(valuationsColumn);
+      const bookings = bookingsColumn
+        ? toNumber(row[bookingsColumn])
+        : shouldDeriveProfit
+          ? Math.max(0, leads - valuations)
+          : Math.round(Math.max(valuations * 0.22, leads * 0.08));
 
       return {
         ...dateParts,

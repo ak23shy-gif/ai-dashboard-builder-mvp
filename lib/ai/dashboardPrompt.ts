@@ -279,48 +279,25 @@ Available component types:
 - heatmap
 - data_table
 
-Available metrics:
-- leads
-- valuations
-- sessions
-- bookings
-- conversionRate
+Renderer metric slots:
+- leads: the primary additive measure from the active dataset, such as revenue, sales, amount, incidents, orders or volume.
+- valuations: the secondary additive measure from the active dataset, such as cost, discount, resolved records, qualified records or another supporting measure.
+- sessions: the activity or quantity measure from the active dataset, such as units sold, visits, requests, transactions or workload.
+- bookings: the outcome measure from the active dataset, such as completed records, bookings, profit, shipped units or derived outcome.
+- conversionRate: a non-additive percentage/rate calculated from the active measures. Use it only in KPI/gauge style components, not category charts.
 
-Available dimensions:
-- month
-- channel
-- brand
+Renderer dimension slots:
+- month: the date/time field grouped into readable periods.
+- brand: the primary category/dimension detected from the dataset, such as category, product group, department, client or team.
+- channel: the secondary category/dimension detected from the dataset, such as region, status, segment, source or location.
 
 Available filters:
-- brand select filter
-- channel select filter
-- month date range filter
+- primary category select filter using field "brand"
+- secondary category select filter using field "channel"
+- month/date range filter using field "month"
 
-Available data fields:
-- date
-- month
-- year
-- brand
-- channel
-- leads
-- valuations
-- sessions
-- bookings
-
-Supported brands:
-- Nurtur
-- Starberry
-- BriefYourMarket
-- Yomdel
-- TPJ
-
-Supported channels:
-- Organic Search
-- Paid Search
-- Social
-- Email
-- Referral
-- Direct
+Important: The slot names are internal renderer names. Use the dashboard's existing titles/series labels whenever possible.
+Do not expose labels such as Leads, Brand or Channel unless the active dataset or user prompt actually uses those terms.
 
 If the user asks to update an existing dashboard, modify the current dashboard instead of creating an unrelated one.
 Keep component IDs stable when editing existing components.
