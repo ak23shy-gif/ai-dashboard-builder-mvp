@@ -38,8 +38,12 @@ const columnAliases = {
   leads: ['leads', 'lead', 'total leads', 'lead count', 'tickets', 'tickets created', 'created', 'cases', 'requests'],
   valuations: ['valuations', 'valuation', 'total valuations', 'valuation count', 'tickets closed', 'closed', 'resolved'],
   sessions: ['sessions', 'website sessions', 'visits', 'traffic', 'views', 'volume'],
-  bookings: ['bookings', 'booking', 'appointments', 'sales', 'sla', 'sla met', 'wins'],
+  bookings: ['bookings', 'booking', 'appointments', 'orders', 'transactions', 'units', 'quantity', 'wins'],
 };
+
+const valueMeasureAliases = ['sales', 'revenue', 'amount', 'total amount', 'value', 'gross sales', 'net sales', 'cost', 'profit', 'margin'];
+const supportingMeasureAliases = ['discount', 'tax', 'shipping', 'freight', 'price', 'rate', 'score', 'duration'];
+const identifierAliases = ['id', 'order id', 'customer id', 'product id', 'row id', 'record id', 'number', 'no', 'code', 'key', 'sku', 'reference'];
 
 function normaliseHeader(value: string) {
   return value
@@ -96,6 +100,11 @@ function isDateLikeColumn(column: string) {
   );
 }
 
+function isIdentifierColumn(column: string) {
+  const normalised = normaliseHeader(column);
+  return identifierAliases.some((alias) => normalised === alias || matchesAlias(normalised, alias));
+}
+
 function findCategoricalColumn(rows: RawRow[], columns: string[], usedColumns: Array<string | undefined> = []) {
   const candidates = columns
     .filter((column) => !usedColumns.includes(column))
@@ -111,6 +120,13 @@ function findCategoricalColumn(rows: RawRow[], columns: string[], usedColumns: A
 
 function firstAvailable(columns: string[], usedColumns: Array<string | undefined>) {
   return columns.find((column) => !usedColumns.includes(column));
+}
+
+function findMeasureColumn(columns: string[], aliases: string[], usedColumns: Array<string | undefined> = []) {
+  return findColumn(
+    columns.filter((column) => !usedColumns.includes(column)),
+    aliases,
+  );
 }
 
 function toNumber(value: unknown) {
@@ -236,7 +252,7 @@ function parseDateParts(row: RawRow, columns: string[]) {
 
 export function normaliseRawRows(rawRows: RawRow[]) {
   const columns = Object.keys(rawRows[0] || {}).slice(0, maxImportColumns);
-  const numericColumns = findNumericColumns(rawRows, columns);
+  const numericColumns = findNumericColumns(rawRows, columns).filter((column) => !isIdentifierColumn(column));
   const textColumns = findTextColumns(rawRows, columns).filter((column) => !isDateLikeColumn(column));
   const aliasBrandColumn = findColumn(textColumns, columnAliases.brand);
   const aliasChannelColumn = findColumn(textColumns, columnAliases.channel);
@@ -245,10 +261,13 @@ export function normaliseRawRows(rawRows: RawRow[]) {
     aliasChannelColumn ||
     findCategoricalColumn(rawRows, textColumns, [brandColumn]) ||
     brandColumn;
-  const leadsColumn = findColumn(columns, columnAliases.leads) || numericColumns[0];
-  const valuationsColumn = findColumn(columns, columnAliases.valuations) || firstAvailable(numericColumns, [leadsColumn]);
-  const sessionsColumn = findColumn(columns, columnAliases.sessions) || firstAvailable(numericColumns, [leadsColumn, valuationsColumn]);
-  const bookingsColumn = findColumn(columns, columnAliases.bookings) || firstAvailable(numericColumns, [leadsColumn, valuationsColumn, sessionsColumn]);
+  const leadsColumn = findMeasureColumn(numericColumns, valueMeasureAliases) || findMeasureColumn(numericColumns, columnAliases.leads) || numericColumns[0];
+  const valuationsColumn =
+    findMeasureColumn(numericColumns, supportingMeasureAliases, [leadsColumn]) ||
+    findMeasureColumn(numericColumns, columnAliases.valuations, [leadsColumn]) ||
+    firstAvailable(numericColumns, [leadsColumn]);
+  const sessionsColumn = findMeasureColumn(numericColumns, columnAliases.sessions, [leadsColumn, valuationsColumn]) || firstAvailable(numericColumns, [leadsColumn, valuationsColumn]);
+  const bookingsColumn = findMeasureColumn(numericColumns, columnAliases.bookings, [leadsColumn, valuationsColumn, sessionsColumn]) || firstAvailable(numericColumns, [leadsColumn, valuationsColumn, sessionsColumn]);
 
   const rows = rawRows
     .map((row) => {

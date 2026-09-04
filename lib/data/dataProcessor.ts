@@ -116,9 +116,44 @@ export function formatCompactNumber(value: number) {
   }).format(value);
 }
 
-export function formatDashboardValue(value: string | number) {
+function normaliseContext(value: string | undefined) {
+  return String(value ?? '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isIdentifierContext(context: string) {
+  return /\b(id|code|key|sku|reference|number|no)\b/.test(context);
+}
+
+function isPercentageContext(context: string) {
+  return /\b(rate|percent|percentage|pct|conversion|margin)\b/.test(context);
+}
+
+function isCurrencyContext(context: string) {
+  return /\b(sales|revenue|amount|cost|profit|price|value|spend|budget)\b/.test(context);
+}
+
+export function formatDashboardValue(value: string | number, context?: string) {
   if (typeof value !== 'number') {
     return value;
+  }
+
+  const normalisedContext = normaliseContext(context);
+
+  if (isIdentifierContext(normalisedContext)) {
+    return formatNumber(value);
+  }
+
+  if (isPercentageContext(normalisedContext)) {
+    return `${Number(value.toFixed(value % 1 ? 1 : 0))}%`;
+  }
+
+  if (!isCurrencyContext(normalisedContext) && Math.abs(value) < 100000) {
+    return formatNumber(value);
   }
 
   return formatCompactNumber(value);

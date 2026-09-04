@@ -68,7 +68,7 @@ function formatTableRows(rows: Array<Record<string, string | number>>, columns: 
   return rows.map((row) =>
     columns.reduce<Record<string, string | number>>((formattedRow, column) => {
       const value = row[column.key];
-      formattedRow[column.key] = formatDashboardValue(value);
+      formattedRow[column.key] = formatDashboardValue(value, `${column.key} ${column.label}`);
       return formattedRow;
     }, {}),
   );

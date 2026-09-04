@@ -165,7 +165,7 @@ export function DataModelView({ rows, sourceLabel }: DataModelViewProps) {
                     <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={`${row.date}-${row.brand}-${row.channel}-${index}`}>
                       {modelColumns.map((column) => (
                         <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key}>
-                          {formatDashboardValue(row[column.key])}
+                          {formatDashboardValue(row[column.key], `${column.key} ${column.label}`)}
                         </td>
                       ))}
                     </tr>
