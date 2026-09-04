@@ -37,6 +37,42 @@ type AIAssistantProps = {
   onResetDashboard: () => void;
 };
 
+type DashboardApiResult = {
+  dashboard?: DashboardConfig;
+  error?: string;
+  setup?: string;
+  source?: 'openai' | 'gemini' | 'local';
+  warning?: string;
+};
+
+async function readDashboardApiResult(response: Response): Promise<DashboardApiResult> {
+  const contentType = response.headers.get('content-type') || '';
+  const text = await response.text();
+
+  if (!text.trim()) {
+    return response.ok ? {} : { error: `Dashboard API returned ${response.status} ${response.statusText}.` };
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(text) as DashboardApiResult;
+    } catch {
+      return { error: 'Dashboard API returned malformed JSON.' };
+    }
+  }
+
+  const plainText = text
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    error: plainText || `Dashboard API returned ${response.status} ${response.statusText}.`,
+  };
+}
+
 export function AIAssistant({
   currentDashboard,
   onDataImported,
@@ -66,13 +102,7 @@ export function AIAssistant({
         body: JSON.stringify({ prompt, currentDashboard }),
       });
 
-      const result = (await response.json()) as {
-        dashboard?: DashboardConfig;
-        error?: string;
-        setup?: string;
-        source?: 'openai' | 'gemini' | 'local';
-        warning?: string;
-      };
+      const result = await readDashboardApiResult(response);
 
       if (!response.ok) {
         throw new Error(result.setup || result.error || 'Dashboard generation failed.');

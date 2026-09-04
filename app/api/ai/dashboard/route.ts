@@ -41,6 +41,30 @@ type GeminiResponse = {
   };
 };
 
+async function readProviderJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {
+      error: {
+        message: text
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 240),
+      },
+    } as T;
+  }
+}
+
 function extractOutputText(response: OpenAIResponse) {
   if (typeof response.output_text === 'string') {
     return response.output_text;
@@ -98,7 +122,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
     }),
   });
 
-  const result = (await openaiResponse.json()) as OpenAIResponse;
+  const result = await readProviderJson<OpenAIResponse>(openaiResponse);
 
   if (!openaiResponse.ok) {
     return localPlannerResponse(
@@ -157,7 +181,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
     },
   );
 
-  const result = (await geminiResponse.json()) as GeminiResponse;
+  const result = await readProviderJson<GeminiResponse>(geminiResponse);
 
   if (!geminiResponse.ok) {
     return localPlannerResponse(
