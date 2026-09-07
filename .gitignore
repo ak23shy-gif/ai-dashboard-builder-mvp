@@ -16,3 +16,5 @@ backend/data/
 __pycache__/
 .pytest_cache/
 pytest-cache-files-*/
+
+.vercel
