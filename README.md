@@ -13,21 +13,23 @@ Recommended production layout:
 | Layer | Host | Purpose |
 | --- | --- | --- |
 | Frontend | Vercel | Next.js UI and `/extract-api/*` proxy |
-| Backend | Persistent Python host such as Render, Railway, Fly.io, Azure App Service, AWS ECS, or a VM | FastAPI extractor, OAuth callback, direct query API |
+| Backend | Render Web Service from the `backend` root directory | FastAPI extractor, OAuth callback, direct query API |
 | Storage | Managed Postgres or persistent disk-backed SQLite for a small private deployment | Tokens, sessions, OAuth state, jobs, rows, checkpoints |
 
-For Vercel, set:
+Keep only one Vercel frontend project. Use `google-api-data-extractor` and remove/ignore any Vercel project named `backend` or old preview project names.
+
+For Vercel project `google-api-data-extractor`, set:
 
 ```text
-EXTRACT_API_BASE_URL=https://your-backend.example.com
+EXTRACT_API_BASE_URL=https://google-api-data-extractor-backend.onrender.com
 ```
 
 For the backend, set:
 
 ```text
-APP_ORIGIN=https://your-vercel-app.vercel.app
-GOOGLE_REDIRECT_URI=https://your-vercel-app.vercel.app/extract-api/auth/callback
-BACKEND_ALLOWED_HOSTS=your-backend.example.com,localhost,127.0.0.1
+APP_ORIGIN=https://google-api-data-extractor.vercel.app
+GOOGLE_REDIRECT_URI=https://google-api-data-extractor.vercel.app/extract-api/auth/callback
+BACKEND_ALLOWED_HOSTS=google-api-data-extractor-backend.onrender.com,localhost,127.0.0.1
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 TOKEN_ENCRYPTION_KEY=...
@@ -37,19 +39,18 @@ GOOGLE_ADS_DEVELOPER_TOKEN=...
 In Google Cloud Console, add the production redirect URI:
 
 ```text
-https://your-vercel-app.vercel.app/extract-api/auth/callback
+https://google-api-data-extractor.vercel.app/extract-api/auth/callback
 ```
 
 For a real multi-user launch, move the OAuth consent screen from Testing to Production after verification and publish only after configuring HTTPS, durable backend storage, backups, log retention, and secret rotation. The application separates workspaces by Google subject ID; each workspace receives its own direct-query API key.
 
-Git/Vercel deployment commands:
+Git deployment commands:
 
 ```powershell
 npm run build
 git add .
 git commit -m "Prepare Google extraction app for production deployment"
 git push origin main
-npx vercel --prod
 ```
 
 ## Run locally on Windows
