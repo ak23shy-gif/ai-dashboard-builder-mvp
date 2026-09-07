@@ -91,7 +91,7 @@ export function ExtractionApp() {
       params.set('metrics', metrics.join(','));
       Object.entries(options).forEach(([key, value]) => { if (value) params.set('option_' + key, value); });
     }
-    return `http://127.0.0.1:8000/query/${product}?${params.toString()}`;
+    return `${window.location.origin}/extract-api/query/${product}?${params.toString()}`;
   })();
 
   useEffect(() => {
