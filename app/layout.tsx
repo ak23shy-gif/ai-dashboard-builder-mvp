@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DashForge AI - Dashboard Builder',
-  description: 'AI-powered web dashboard builder for files, APIs and databases.',
+  title: 'Google Extract — Your data, ready to go',
+  description: 'Extract Google data into clean CSV and JSON files.',
 };
 
 export default function RootLayout({

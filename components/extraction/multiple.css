@@ -1,0 +1,50 @@
+.gx-connections { margin-bottom: 30px; }
+.gx-connections .gx-connect-panel { margin-bottom: 0; }
+.gx-account-list { background: white; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 9px 9px; margin: -5px 8px 0; padding-top: 5px; }
+.gx-account-row { display: flex; align-items: center; gap: 11px; padding: 13px 16px; border-bottom: 1px solid #f0edf5; }
+.gx-account-row:last-child { border-bottom: 0; }
+.gx-account-row > div { flex: 1; min-width: 0; }
+.gx-account-row strong { display: block; font-size: 11px; overflow-wrap: anywhere; }
+.gx-account-row small { display: block; font-size: 9px; color: #8b8196; margin-top: 2px; }
+.gx-resource-placeholder { display: flex; gap: 8px; align-items: center; background: #faf9fc; border: 1px solid #e7e2ee; border-radius: 6px; padding: 15px; margin-top: 13px; color: #95879f; font-size: 11px; }
+.gx-resource-toolbar { display: flex; align-items: center; gap: 13px; margin-top: 16px; }
+.gx-resource-toolbar .gx-field-search { flex: 1; margin: 0; padding: 9px; border: 1px solid #e8e1ef; border-radius: 5px; }
+.gx-resource-toolbar > button { border: 0; background: none; color: var(--purple); font-size: 10px; white-space: nowrap; }
+.gx-resource-options { max-height: 285px; overflow-y: auto; border: 1px solid #e8e2ee; border-radius: 7px; margin-top: 10px; padding: 8px; scrollbar-width: thin; }
+.gx-resource-options fieldset { border: 0; margin: 0 0 7px; padding: 0; min-width: 0; }
+.gx-api-form { display: grid; gap: 13px; margin-bottom: 18px; }
+.gx-api-grid { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; }
+.gx-app textarea { background: #fff; border: 1px solid #e3dfe9; border-radius: 6px; color: #686272; font: inherit; font-size: 11px; min-height: 76px; padding: 10px 12px; resize: vertical; width: 100%; }
+.gx-app textarea:disabled { background: #faf9fc; color: #aaa4b4; }
+.gx-api .gx-product-icon, .gx-product-icon.gx-api { background: #edf7f6; color: #16877f; }
+.gx-query-body { display: grid; gap: 11px; padding: 18px 22px; }
+.gx-query-body textarea { font-family: Consolas, "Courier New", monospace; min-height: 92px; }
+.gx-query-body code { background: #f3eff9; border-radius: 4px; color: #7b659c; padding: 2px 4px; }
+@media(max-width:800px){.gx-api-grid{grid-template-columns:1fr}}
+.gx-resource-options legend { color: #8b799e; padding: 7px 8px 5px; font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }
+.gx-resource-option { display: flex; gap: 10px; padding: 9px; border: 1px solid transparent; border-radius: 5px; align-items: flex-start; cursor: pointer; }
+.gx-resource-option.checked { background: #f8f4ff; border-color: #e9dcfb; }
+.gx-resource-option:hover { background: #faf8fd; }
+.gx-resource-option input { margin-top: 3px; }
+.gx-resource-option strong { display: block; font-size: 11px; font-weight: 500; }
+.gx-resource-option small { display: block; font-size: 9px; color: #9b8caa; overflow-wrap: anywhere; }
+.gx-resource-option:has(input:disabled):not(.checked) { opacity: .5; cursor: default; }
+.gx-source-tab { margin-top: 16px; }
+.gx-source-progress { padding: 10px 20px; background: #fdfbff; border-bottom: 1px solid #eee8f5; max-height: 300px; overflow-y: auto; }
+.gx-source-progress > div { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0eaf6; }
+.gx-source-progress > div:last-child { border-bottom: 0; }
+.gx-source-progress > div > div { flex: 1; min-width: 0; }
+.gx-source-progress strong { display: block; font-size: 11px; font-weight: 500; }
+.gx-source-progress small { display: block; color: #9a8aa8; font-size: 9px; overflow-wrap: anywhere; }
+.gx-source-progress p { font-size: 10px; color: #af6050; margin: 4px 0 0; }
+.gx-source-progress > div > span:last-child { font-size: 10px; color: #9685a4; white-space: nowrap; }
+.gx-job-status.partial { background: #fff5df; color: #a9822d; }
+.gx-job-status.skipped { background: #edf3f7; color: #738c9f; }
+@media (max-width: 800px) {
+  .gx-account-row { flex-wrap: wrap; gap: 8px; }
+  .gx-account-row > div { min-width: 160px; }
+  .gx-resource-toolbar { flex-wrap: wrap; gap: 10px; }
+  .gx-resource-toolbar .gx-field-search { flex-basis: 100%; }
+  .gx-export-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .gx-source-progress { padding: 10px 14px; }
+}

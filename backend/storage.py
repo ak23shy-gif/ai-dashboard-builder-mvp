@@ -1,0 +1,98 @@
+import csv
+import io
+import json
+import re
+import sqlite3
+from pathlib import Path
+
+DATA = Path(__file__).parent / "data"
+
+
+def column_names(names):
+    used, out = set(), []
+    for raw in names:
+        base = re.sub(r"[^a-z0-9]+", "_", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", raw).lower()).strip("_") or "column"
+        name, i = base, 2
+        while name in used:
+            name = f"{base}_{i}"
+            i += 1
+        used.add(name)
+        out.append(name)
+    return out
+
+
+def db():
+    DATA.mkdir(exist_ok=True)
+    conn = sqlite3.connect(DATA / "extract.db", timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def init():
+    with db() as c:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, value BLOB);
+        CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, owner TEXT, status TEXT, spec TEXT, columns TEXT DEFAULT '[]', count INTEGER DEFAULT 0, error TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS rows (job TEXT, data TEXT, UNIQUE(job,data));
+        CREATE INDEX IF NOT EXISTS rows_job ON rows(job);
+        CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, end_date TEXT);
+        CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, owner TEXT, expires REAL);
+        CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
+        CREATE TABLE IF NOT EXISTS oauth_states (id TEXT PRIMARY KEY, data TEXT, expires REAL);
+        CREATE INDEX IF NOT EXISTS oauth_states_expires ON oauth_states(expires);
+        CREATE TABLE IF NOT EXISTS job_sources (
+            job TEXT, position INTEGER, connection_id TEXT, email TEXT,
+            resource TEXT, name TEXT, start_date TEXT, end_date TEXT,
+            status TEXT DEFAULT 'queued', count INTEGER DEFAULT 0, error TEXT,
+            PRIMARY KEY(job,position)
+        );
+        """)
+        if "source" not in {row[1] for row in c.execute("PRAGMA table_info(rows)")}:
+            c.execute("ALTER TABLE rows ADD COLUMN source INTEGER")
+        c.execute("UPDATE jobs SET status='failed', error='Server stopped during extraction. Run the extraction again.' WHERE status IN ('queued','running')")
+        c.execute("UPDATE job_sources SET status='failed', error='Server stopped during extraction.' WHERE status IN ('queued','running')")
+
+
+def insert_rows(job, rows, columns, source=None, union=False):
+    if not rows:
+        return columns
+    original = list(rows[0])
+    names = column_names(original)
+    if columns and columns != names and not union:
+        raise ValueError("The API response schema changed during extraction. Retry the query.")
+    with db() as c:
+        c.executemany("INSERT OR IGNORE INTO rows(job,data,source) VALUES (?,?,?)", [(job, json.dumps(dict(zip(names, [r.get(k) for k in original])), ensure_ascii=False, allow_nan=False, separators=(",", ":")), source) for r in rows])
+        added = c.total_changes
+        combined = list(dict.fromkeys(columns + names)) if union else names
+        c.execute("UPDATE jobs SET columns=?, count=count+? WHERE id=?", (json.dumps(combined), added, job))
+        if source is not None:
+            c.execute("UPDATE job_sources SET count=count+? WHERE job=? AND position=?", (added, job, source))
+    return combined
+
+
+def export_rows(job, columns, fmt):
+    # Iterate with a cursor: exports never materialize the full dataset in memory.
+    conn = db()
+    try:
+        cur = conn.execute("SELECT data FROM rows WHERE job=? ORDER BY rowid", (job,))
+        if fmt == "json":
+            yield "["
+            first = True
+            for row in cur:
+                data = json.loads(row[0])
+                yield ("" if first else ",") + json.dumps({k: data.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
+                first = False
+            yield "]"
+        else:
+            buf = io.StringIO(newline="")
+            writer = csv.writer(buf, lineterminator="\r\n")
+            writer.writerow(columns)
+            yield "\ufeff" + buf.getvalue()
+            for row in cur:
+                buf.seek(0)
+                buf.truncate(0)
+                writer.writerow([json.loads(row[0]).get(k) for k in columns])
+                yield buf.getvalue()
+    finally:
+        conn.close()

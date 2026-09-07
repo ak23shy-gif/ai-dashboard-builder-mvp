@@ -1,5 +1,5 @@
-import { DashboardBuilderShell } from '@/components/layout/DashboardBuilderShell';
+import { redirect } from 'next/navigation';
 
 export default function DashboardPage() {
-  return <DashboardBuilderShell />;
+  redirect('/');
 }

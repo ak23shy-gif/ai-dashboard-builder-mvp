@@ -10,3 +10,9 @@ coverage
 tsconfig.tsbuildinfo
 .vercel
 .vscode
+backend/.env
+backend/data/
+.venv/
+__pycache__/
+.pytest_cache/
+pytest-cache-files-*/
