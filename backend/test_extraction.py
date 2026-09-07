@@ -68,6 +68,13 @@ def test_tokens_are_encrypted(client):
     assert "private-access" not in client.get("/status").text
 
 
+def test_encryption_key_accepts_common_env_paste_artifacts(client, monkeypatch):
+    key = Fernet.generate_key().decode()
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", f'"{key.replace("_", "\\_")}"')
+    main.save_token({"access_token": "private-access", "refresh_token": "private-refresh"})
+    assert main.read_token()["refresh_token"] == "private-refresh"
+
+
 def test_tabular_export_deduplication_and_types(client):
     login(client)
     job_record()

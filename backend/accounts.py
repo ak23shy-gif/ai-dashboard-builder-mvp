@@ -9,7 +9,7 @@ from .storage import db
 
 
 def cipher():
-    key = os.getenv("TOKEN_ENCRYPTION_KEY", "")
+    key = os.getenv("TOKEN_ENCRYPTION_KEY", "").strip().strip("\"'").replace("\\_", "_")
     if not key:
         raise HTTPException(503, "Set TOKEN_ENCRYPTION_KEY in backend/.env. See the setup guide.")
     try:
