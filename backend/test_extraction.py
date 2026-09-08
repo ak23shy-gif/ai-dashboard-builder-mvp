@@ -392,6 +392,21 @@ def test_apply_direct_query_previews_typed_url(client, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json() == {"columns": ["date", "active_users"], "rows": [{"date": "2026-09-01", "active_users": 7}], "count": 1}
 
+
+def test_windsor_style_ga4_endpoint_returns_data_wrapper(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    class Fake:
+        async def discover(self): return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid): return {"dimensions": ["sessionPrimaryChannelGroup"], "metrics": ["sessions"]}
+        async def extract(self, q):
+            assert q.dimensions == ["sessionPrimaryChannelGroup"] and q.metrics == ["sessions"]
+            yield [{"sessionPrimaryChannelGroup": "Organic Search", "sessions": 12}]
+    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&fields=property_name,sessionPrimaryChannelGroup,sessions&date_from=2026-08-01&date_to=2026-08-02"
+    assert client.get(url).json() == {"data": [{"property_name": "Site", "session_primary_channel_group": "Organic Search", "sessions": 12}]}
+
 def test_query_key_is_created_for_connected_workspace(client):
     login(client)
     first = client.get("/query/key").json()["api_key"]

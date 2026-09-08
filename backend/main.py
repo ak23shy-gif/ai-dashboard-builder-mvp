@@ -464,6 +464,77 @@ async def apply_direct_query(payload: ApplyQueryRequest):
     clean_columns = column_names(columns)
     return {"columns": clean_columns, "rows": [dict(zip(column_names(row.keys()), row.values())) for row in rows], "count": len(rows)}
 
+
+
+GA4_METRIC_FIELDS = set(CATALOG["ga4"]["metrics"])
+GA4_SOURCE_FIELDS = {"source_google_account", "source_resource_id", "source_resource_name", "account_name", "property_id", "property_name"}
+
+
+def ga4_targets_from_params(params):
+    targets = parse_targets(params.get("targets", ""))
+    if targets:
+        return targets
+    connection_id = params.get("connection_id") or params.get("workspace", "")
+    resources = split_csv(params.get("resources") or params.get("resource", ""))
+    property_id = params.get("property_id") or params.get("property")
+    if property_id:
+        rid = property_id if property_id.startswith("properties/") else "properties/" + property_id
+        resources = [rid]
+    return [{"connection_id": connection_id, "resource": r, "options": {}} for r in resources if r]
+
+
+@app.get("/googleanalytics4")
+async def windsor_googleanalytics4(request: Request, format: str = "json"):
+    params = request.query_params
+    workspace = params.get("workspace", "")
+    if not workspace:
+        raise HTTPException(422, "Add workspace to the query.")
+    require_query_key(request, workspace)
+    fields = split_csv(params.get("fields", ""))
+    if not fields:
+        raise HTTPException(422, "Add fields to the query.")
+    output_source_fields = [f for f in fields if f in GA4_SOURCE_FIELDS]
+    data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS]
+    dimensions = [f for f in data_fields if f not in GA4_METRIC_FIELDS]
+    metrics = [f for f in data_fields if f in GA4_METRIC_FIELDS]
+    if not metrics:
+        raise HTTPException(422, "Add at least one GA4 metric field, for example sessions.")
+    targets = ga4_targets_from_params(params)
+    if not targets:
+        raise HTTPException(422, "Add property_id, resource, resources, or targets to the query.")
+    options = {k.removeprefix("option_"): v for k, v in params.items() if k.startswith("option_")}
+    if params.get("filter"):
+        options["filter"] = params["filter"]
+    if params.get("filters"):
+        options["filters"] = params["filters"]
+    spec = {"product": "ga4", "workspace": workspace, "connection_id": params.get("connection_id", ""), "resources": [t["resource"] for t in targets], "targets": targets, "start": params.get("date_from") or params.get("start") or date.today().isoformat(), "end": params.get("date_to") or params.get("end") or date.today().isoformat(), "fields": [], "dimensions": dimensions, "metrics": metrics, "options": options}
+    rows = []
+    async for row in query_rows(spec):
+        if output_source_fields:
+            row = {**row}
+            if "account_name" in output_source_fields:
+                row.setdefault("account_name", row.get("source_google_account"))
+            if "property_id" in output_source_fields:
+                row.setdefault("property_id", row.get("source_resource_id"))
+            if "property_name" in output_source_fields:
+                row.setdefault("property_name", row.get("source_resource_name"))
+        wanted = [f for f in fields]
+        clean = {}
+        for key, value in row.items():
+            clean_key = column_names([key])[0]
+            clean[clean_key] = value
+        row_out = {column_names([f])[0]: clean.get(column_names([f])[0]) for f in wanted if column_names([f])[0] in clean}
+        rows.append(row_out)
+    if format == "csv":
+        import csv, io
+        columns = list(dict.fromkeys(k for row in rows for k in row))
+        buf = io.StringIO(newline="")
+        writer = csv.DictWriter(buf, fieldnames=columns, lineterminator="\r\n")
+        writer.writeheader()
+        writer.writerows(rows)
+        return StreamingResponse(iter(["\ufeff" + buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=googleanalytics4.csv"})
+    return {"data": rows}
+
 @app.get("/query/{product}")
 async def direct_query(product: str, request: Request, format: str = "json"):
     if product not in CONNECTORS:
