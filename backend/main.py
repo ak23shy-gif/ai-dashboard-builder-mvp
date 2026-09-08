@@ -468,6 +468,69 @@ async def apply_direct_query(payload: ApplyQueryRequest):
 
 GA4_METRIC_FIELDS = set(CATALOG["ga4"]["metrics"])
 GA4_SOURCE_FIELDS = {"source_google_account", "source_resource_id", "source_resource_name", "account_name", "property_id", "property_name"}
+GA4_TRAFFIC_ACQUISITION_ALIASES = {
+    "sessionPrimaryChannelGroup": "sessionDefaultChannelGroup",
+    "session_primary_channel_group": "sessionDefaultChannelGroup",
+    "channel": "sessionDefaultChannelGroup",
+    "defaultChannelGroup": "sessionDefaultChannelGroup",
+    "default_channel_group": "sessionDefaultChannelGroup",
+}
+GA4_TRAFFIC_ACQUISITION_DATE_DIMS = {"date", "week", "month", "year"}
+
+
+def ga4_ui_report_plan(fields, ui_report=""):
+    report = (ui_report or "").strip().lower().replace("-", "_")
+    output_source_fields = [f for f in fields if f in GA4_SOURCE_FIELDS]
+    if report != "traffic_acquisition":
+        data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS]
+        return {
+            "report": report,
+            "output_source_fields": output_source_fields,
+            "dimensions": [f for f in data_fields if f not in GA4_METRIC_FIELDS],
+            "metrics": [f for f in data_fields if f in GA4_METRIC_FIELDS],
+            "output_aliases": {},
+            "ignored_fields": [],
+        }
+
+    requested_data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS]
+    date_dimensions = [f for f in requested_data_fields if f in GA4_TRAFFIC_ACQUISITION_DATE_DIMS]
+    metrics = [f for f in requested_data_fields if f in GA4_METRIC_FIELDS]
+    dimensions = list(dict.fromkeys(date_dimensions + ["sessionDefaultChannelGroup"]))
+    aliases = {f: GA4_TRAFFIC_ACQUISITION_ALIASES[f] for f in requested_data_fields if f in GA4_TRAFFIC_ACQUISITION_ALIASES}
+    if not aliases and "sessionDefaultChannelGroup" not in requested_data_fields:
+        aliases["sessionPrimaryChannelGroup"] = "sessionDefaultChannelGroup"
+    ignored = [
+        f for f in requested_data_fields
+        if f not in metrics and f not in date_dimensions and f != "sessionDefaultChannelGroup" and f not in aliases
+    ]
+    return {
+        "report": report,
+        "output_source_fields": output_source_fields,
+        "dimensions": dimensions,
+        "metrics": metrics,
+        "output_aliases": aliases,
+        "ignored_fields": ignored,
+    }
+
+
+def clean_projected_row(row, wanted, output_source_fields=None, output_aliases=None):
+    if output_source_fields:
+        row = {**row}
+        if "account_name" in output_source_fields:
+            row.setdefault("account_name", row.get("source_google_account"))
+        if "property_id" in output_source_fields:
+            row.setdefault("property_id", row.get("source_resource_id"))
+        if "property_name" in output_source_fields:
+            row.setdefault("property_name", row.get("source_resource_name"))
+    clean = {}
+    for key, value in row.items():
+        clean[column_names([key])[0]] = value
+    for requested, actual in (output_aliases or {}).items():
+        requested_key = column_names([requested])[0]
+        actual_key = column_names([actual])[0]
+        if actual_key in clean:
+            clean[requested_key] = clean[actual_key]
+    return {column_names([f])[0]: clean.get(column_names([f])[0]) for f in wanted if column_names([f])[0] in clean}
 
 
 def ga4_targets_from_params(params):
@@ -493,20 +556,11 @@ async def windsor_googleanalytics4(request: Request, format: str = "json"):
     fields = split_csv(params.get("fields", ""))
     if not fields:
         raise HTTPException(422, "Add fields to the query.")
-    output_source_fields = [f for f in fields if f in GA4_SOURCE_FIELDS]
-    ui_report = (params.get("ui_report") or params.get("report") or "").strip().lower().replace("-", "_")
-    if ui_report == "traffic_acquisition":
-        source_dimensions = ["date"] if "date" in fields else []
-        source_dimensions.append("sessionDefaultChannelGroup")
-        output_aliases = {"sessionPrimaryChannelGroup": "sessionDefaultChannelGroup", "session_primary_channel_group": "sessionDefaultChannelGroup"}
-        data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS and f not in output_aliases]
-        dimensions = source_dimensions
-        metrics = [f for f in data_fields if f in GA4_METRIC_FIELDS]
-    else:
-        output_aliases = {}
-        data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS]
-        dimensions = [f for f in data_fields if f not in GA4_METRIC_FIELDS]
-        metrics = [f for f in data_fields if f in GA4_METRIC_FIELDS]
+    plan = ga4_ui_report_plan(fields, params.get("ui_report") or params.get("report") or "")
+    output_source_fields = plan["output_source_fields"]
+    output_aliases = plan["output_aliases"]
+    dimensions = plan["dimensions"]
+    metrics = plan["metrics"]
     if not metrics:
         raise HTTPException(422, "Add at least one GA4 metric field, for example sessions.")
     targets = ga4_targets_from_params(params)
@@ -528,18 +582,8 @@ async def windsor_googleanalytics4(request: Request, format: str = "json"):
                 row.setdefault("property_id", row.get("source_resource_id"))
             if "property_name" in output_source_fields:
                 row.setdefault("property_name", row.get("source_resource_name"))
-        wanted = [f for f in fields]
-        clean = {}
-        for key, value in row.items():
-            clean_key = column_names([key])[0]
-            clean[clean_key] = value
-        for requested, actual in output_aliases.items():
-            requested_key = column_names([requested])[0]
-            actual_key = column_names([actual])[0]
-            if actual_key in clean:
-                clean[requested_key] = clean[actual_key]
-        row_out = {column_names([f])[0]: clean.get(column_names([f])[0]) for f in wanted if column_names([f])[0] in clean}
-        rows.append(row_out)
+        wanted = [f for f in fields if f not in plan["ignored_fields"]]
+        rows.append(clean_projected_row(row, wanted, output_source_fields, output_aliases))
     if format == "csv":
         import csv, io
         columns = list(dict.fromkeys(k for row in rows for k in row))
@@ -576,6 +620,17 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         resources = ["endpoint"]
         if not targets:
             targets = [{"connection_id": "api", "resource": "endpoint", "options": options}]
+    fields_param = split_csv(params.get("fields", ""))
+    dimensions_param = split_csv(params.get("dimensions", ""))
+    metrics_param = split_csv(params.get("metrics", ""))
+    ga4_plan = None
+    ga4_wanted_fields = []
+    if product == "ga4" and (params.get("ui_report") or params.get("report")):
+        ga4_wanted_fields = fields_param or dimensions_param + metrics_param
+        ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, params.get("ui_report") or params.get("report") or "")
+        fields_param = []
+        dimensions_param = ga4_plan["dimensions"]
+        metrics_param = ga4_plan["metrics"]
     spec = {
         "product": product,
         "workspace": workspace,
@@ -584,9 +639,9 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         "targets": targets,
         "start": start,
         "end": end,
-        "fields": split_csv(params.get("fields", "")),
-        "dimensions": split_csv(params.get("dimensions", "")),
-        "metrics": split_csv(params.get("metrics", "")),
+        "fields": fields_param,
+        "dimensions": dimensions_param,
+        "metrics": metrics_param,
         "options": options,
     }
     if format not in ("json", "csv"):
@@ -596,8 +651,13 @@ async def direct_query(product: str, request: Request, format: str = "json"):
             columns, first = [], True
             yield "["
             async for row in query_rows(spec):
-                names = column_names(row.keys())
-                clean = dict(zip(names, row.values()))
+                if ga4_plan:
+                    wanted = [f for f in ga4_wanted_fields if f not in ga4_plan["ignored_fields"]]
+                    clean = clean_projected_row(row, wanted, ga4_plan["output_source_fields"], ga4_plan["output_aliases"])
+                else:
+                    names = column_names(row.keys())
+                    clean = dict(zip(names, row.values()))
+                names = list(clean.keys())
                 columns = list(dict.fromkeys(columns + names))
                 yield ("" if first else ",") + json.dumps({k: clean.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
                 first = False
@@ -607,8 +667,13 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         import csv, io
         rows, columns = [], []
         async for row in query_rows(spec):
-            names = column_names(row.keys())
-            clean = dict(zip(names, row.values()))
+            if ga4_plan:
+                wanted = [f for f in ga4_wanted_fields if f not in ga4_plan["ignored_fields"]]
+                clean = clean_projected_row(row, wanted, ga4_plan["output_source_fields"], ga4_plan["output_aliases"])
+            else:
+                names = column_names(row.keys())
+                clean = dict(zip(names, row.values()))
+            names = list(clean.keys())
             columns = list(dict.fromkeys(columns + names))
             rows.append(clean)
         buf = io.StringIO(newline="")

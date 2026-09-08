@@ -429,3 +429,20 @@ def test_query_key_is_created_for_connected_workspace(client):
     first = client.get("/query/key").json()["api_key"]
     second = client.get("/query/key").json()["api_key"]
     assert first == second and len(first) > 20
+
+
+def test_direct_ga4_query_ui_report_uses_same_planner(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    seen = []
+    class Fake:
+        async def discover(self): return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid): return {"dimensions": ["sessionDefaultChannelGroup", "sessionPrimaryChannelGroup", "sessionManualSource"], "metrics": ["sessions", "activeUsers"]}
+        async def extract(self, q):
+            seen.append((q.dimensions, q.metrics))
+            yield [{"sessionDefaultChannelGroup": "Direct", "sessions": 5, "activeUsers": 4}]
+    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    url = "/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&ui_report=traffic_acquisition&dimensions=sessionPrimaryChannelGroup,sessionManualSource&metrics=sessions,activeUsers"
+    assert client.get(url).json() == [{"session_primary_channel_group": "Direct", "sessions": 5, "active_users": 4}]
+    assert seen == [(["sessionDefaultChannelGroup"], ["sessions", "activeUsers"])]
