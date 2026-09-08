@@ -334,7 +334,7 @@ def test_direct_query_requires_key_and_streams_ga4(client, monkeypatch):
     url = "/query/ga4?workspace=user1&connection_id=user1&resource=properties/1&date_from=2026-08-01&date_to=2026-08-02&fields=date,sessions"
     assert client.get(url).status_code == 401
     data = client.get(url + "&api_key=query-secret").json()
-    assert data == [{"date": "2026-08-01", "sessions": 12}]
+    assert data == [{"source_google_account": "me@example.com", "source_resource_id": "properties/1", "source_resource_name": "Site", "date": "2026-08-01", "sessions": 12}]
 
 
 
@@ -359,7 +359,9 @@ def test_direct_query_targets_are_self_contained(client, monkeypatch):
     ])
     from urllib.parse import quote
     url = "/query/ga4?workspace=user1&date_from=2026-08-01&date_to=2026-08-02&fields=date,sessions&filters=" + quote('{"dimensionFilter":{"filter":{"fieldName":"country"}}}') + "&targets=" + quote(targets) + "&api_key=query-secret"
-    assert client.get(url).json() == [{"date": "2026-08-01", "sessions": 1}, {"date": "2026-08-01", "sessions": 2}]
+    rows = client.get(url).json()
+    assert rows[0]["source_resource_name"] == "conn1" and rows[1]["source_resource_name"] == "conn2"
+    assert [row["sessions"] for row in rows] == [1, 2]
     assert seen == [("conn1", "properties/1", '{"dimensionFilter":{"filter":{"fieldName":"country"}}}'), ("conn2", "properties/2", '{"dimensionFilter":{"filter":{"fieldName":"country"}}}')]
 
 

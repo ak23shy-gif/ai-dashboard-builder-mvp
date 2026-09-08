@@ -375,7 +375,10 @@ async def query_rows(q):
             discovered = discovery_cache[cid]
             if resource_id not in discovered:
                 raise HTTPException(403, f"Resource is not accessible: {resource_id}")
+            resource_meta = discovered[resource_id]
             meta = {**CATALOG[q["product"]], **await con.fields(resource_id)}
+            token = read_token(q.get("workspace", ""), cid)
+            source_email = token.get("email", cid) if token else cid
             dimensions, metrics = q["dimensions"], q["metrics"]
             if q.get("fields") and not (dimensions or metrics):
                 fields = q["fields"]
@@ -389,7 +392,12 @@ async def query_rows(q):
             query = Query(product="api", resource="endpoint", start=q["start"], end=q["end"], dimensions=[], metrics=[], options=target_options, connection_id="api")
         async for batch in con.extract(query):
             for row in batch:
-                yield row
+                if q["product"] != "api":
+                    keys = ["source_google_account", "source_resource_id", "source_resource_name"] + list(row)
+                    values = [source_email, resource_id, resource_meta.get("name", resource_id)] + list(row.values())
+                    yield dict(zip(column_names(keys), values))
+                else:
+                    yield row
 
 
 
