@@ -494,9 +494,19 @@ async def windsor_googleanalytics4(request: Request, format: str = "json"):
     if not fields:
         raise HTTPException(422, "Add fields to the query.")
     output_source_fields = [f for f in fields if f in GA4_SOURCE_FIELDS]
-    data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS]
-    dimensions = [f for f in data_fields if f not in GA4_METRIC_FIELDS]
-    metrics = [f for f in data_fields if f in GA4_METRIC_FIELDS]
+    ui_report = (params.get("ui_report") or params.get("report") or "").strip().lower().replace("-", "_")
+    if ui_report == "traffic_acquisition":
+        source_dimensions = ["date"] if "date" in fields else []
+        source_dimensions.append("sessionDefaultChannelGroup")
+        output_aliases = {"sessionPrimaryChannelGroup": "sessionDefaultChannelGroup", "session_primary_channel_group": "sessionDefaultChannelGroup"}
+        data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS and f not in output_aliases]
+        dimensions = source_dimensions
+        metrics = [f for f in data_fields if f in GA4_METRIC_FIELDS]
+    else:
+        output_aliases = {}
+        data_fields = [f for f in fields if f not in GA4_SOURCE_FIELDS]
+        dimensions = [f for f in data_fields if f not in GA4_METRIC_FIELDS]
+        metrics = [f for f in data_fields if f in GA4_METRIC_FIELDS]
     if not metrics:
         raise HTTPException(422, "Add at least one GA4 metric field, for example sessions.")
     targets = ga4_targets_from_params(params)
@@ -523,6 +533,11 @@ async def windsor_googleanalytics4(request: Request, format: str = "json"):
         for key, value in row.items():
             clean_key = column_names([key])[0]
             clean[clean_key] = value
+        for requested, actual in output_aliases.items():
+            requested_key = column_names([requested])[0]
+            actual_key = column_names([actual])[0]
+            if actual_key in clean:
+                clean[requested_key] = clean[actual_key]
         row_out = {column_names([f])[0]: clean.get(column_names([f])[0]) for f in wanted if column_names([f])[0] in clean}
         rows.append(row_out)
     if format == "csv":

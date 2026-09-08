@@ -407,6 +407,23 @@ def test_windsor_style_ga4_endpoint_returns_data_wrapper(client, monkeypatch):
     url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&fields=property_name,sessionPrimaryChannelGroup,sessions&date_from=2026-08-01&date_to=2026-08-02"
     assert client.get(url).json() == {"data": [{"property_name": "Site", "session_primary_channel_group": "Organic Search", "sessions": 12}]}
 
+
+def test_windsor_style_ga4_traffic_acquisition_uses_ui_report_grain(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    seen = []
+    class Fake:
+        async def discover(self): return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid): return {"dimensions": ["date", "sessionDefaultChannelGroup", "sessionPrimaryChannelGroup", "sessionManualSource"], "metrics": ["sessions", "activeUsers"]}
+        async def extract(self, q):
+            seen.append((q.dimensions, q.metrics))
+            yield [{"sessionDefaultChannelGroup": "Organic Search", "sessions": 12, "activeUsers": 10}]
+    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&ui_report=traffic_acquisition&fields=sessionPrimaryChannelGroup,sessionManualSource,sessions,activeUsers&date_from=2026-08-01&date_to=2026-08-02"
+    assert client.get(url).json() == {"data": [{"session_primary_channel_group": "Organic Search", "sessions": 12, "active_users": 10}]}
+    assert seen == [(["sessionDefaultChannelGroup"], ["sessions", "activeUsers"])]
+
 def test_query_key_is_created_for_connected_workspace(client):
     login(client)
     first = client.get("/query/key").json()["api_key"]
