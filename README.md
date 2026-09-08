@@ -18,11 +18,14 @@ Recommended production layout:
 
 Keep only one Vercel frontend project. Use `google-api-data-extractor` and remove/ignore any Vercel project named `backend` or old preview project names.
 
-For Vercel project `google-api-data-extractor`, set:
+For Vercel project `google-api-data-extractor`, set both values:
 
 ```text
 EXTRACT_API_BASE_URL=https://google-api-data-extractor-backend.onrender.com
+NEXT_PUBLIC_EXTRACT_API_BASE_URL=https://google-api-data-extractor-backend.onrender.com
 ```
+
+`EXTRACT_API_BASE_URL` keeps the browser app proxy working. `NEXT_PUBLIC_EXTRACT_API_BASE_URL` makes the copied Power BI/Dataflow URL point directly at the public backend API, like Windsor-style connector URLs.
 
 For the backend, set:
 
