@@ -213,15 +213,11 @@ export function ExtractionApp() {
     if (!url) return;
     setSubmitting(true); setError('');
     try {
-      const response = await fetch(url);
-      const text = await response.text();
-      let data: unknown;
-      try { data = JSON.parse(text); } catch { throw new Error(response.ok ? 'The query did not return JSON. Use format=json to preview it in the table.' : text || `Query failed with ${response.status}.`); }
-      if (!response.ok) throw new Error(typeof (data as { detail?: unknown }).detail === 'string' ? (data as { detail: string }).detail : `Query failed with ${response.status}.`);
-      const rows = Array.isArray(data) ? data.filter(row => row && typeof row === 'object') as Record<string, unknown>[] : data && typeof data === 'object' ? [data as Record<string, unknown>] : [];
-      const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
+      const preview = await request<{ columns: string[]; rows: Record<string, unknown>[]; count: number }>('/query/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+      const rows = preview.rows;
+      const columns = preview.columns;
       setOffset(0);
-      setJob({ id: 'direct-query', status: 'complete', count: rows.length, created: new Date().toISOString(), columns, rows: rows.slice(0, 50), spec: { product, resource: 'direct-query', start, end, dimensions, metrics, incremental: false, options: { url } } });
+      setJob({ id: 'direct-query', status: 'complete', count: preview.count, created: new Date().toISOString(), columns, rows: rows.slice(0, 50), spec: { product, resource: 'direct-query', start, end, dimensions, metrics, incremental: false, options: { url } } });
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (e) { setError((e as Error).message); }
     finally { setSubmitting(false); }

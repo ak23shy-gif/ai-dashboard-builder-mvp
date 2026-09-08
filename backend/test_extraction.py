@@ -375,6 +375,21 @@ def test_ga4_filter_json_is_sent_to_data_api():
         assert calls[0]["dimensionFilter"] == {"filter": {"fieldName": "country"}}
     asyncio.run(run())
 
+
+def test_apply_direct_query_previews_typed_url(client, monkeypatch):
+    import httpx
+    class FakeClient:
+        def __init__(self, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, url, **kw):
+            assert url == "https://api.example.test/report?format=json"
+            return httpx.Response(200, json=[{"Date": "2026-09-01", "Active Users": 7}], request=httpx.Request("GET", url))
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
+    r = client.post("/query/apply", json={"url": "https://api.example.test/report?format=json"}, headers={"Origin": main.ORIGIN})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"columns": ["date", "active_users"], "rows": [{"date": "2026-09-01", "active_users": 7}], "count": 1}
+
 def test_query_key_is_created_for_connected_workspace(client):
     login(client)
     first = client.get("/query/key").json()["api_key"]

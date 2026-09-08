@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .connectors import CATALOG, CONNECTORS
+from .connectors import CATALOG, CONNECTORS, find_rows, flatten
 from .storage import db, init, insert_rows, export_rows, column_names
 from .accounts import cipher, save_token, read_token, list_accounts, remove_account
 
@@ -390,6 +390,30 @@ async def query_rows(q):
             for row in batch:
                 yield row
 
+
+
+class ApplyQueryRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=20000)
+
+
+@app.post("/query/apply")
+async def apply_direct_query(payload: ApplyQueryRequest):
+    target = payload.url.strip()
+    parsed = httpx.URL(target)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(422, "Enter a valid HTTP or HTTPS query URL.")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=20), follow_redirects=True) as client:
+        response = await client.get(target, headers={"Accept": "application/json"})
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise HTTPException(response.status_code if response.is_error else 422, "The query did not return JSON. Use format=json for table preview.") from exc
+    if response.is_error:
+        detail = data.get("detail") if isinstance(data, dict) else None
+        raise HTTPException(response.status_code, detail or f"Query failed with HTTP {response.status_code}.")
+    rows = [flatten(row) for row in find_rows(data)]
+    columns = list(dict.fromkeys(key for row in rows for key in row))
+    return {"columns": column_names(columns), "rows": [dict(zip(column_names(row.keys()), row.values())) for row in rows], "count": len(rows)}
 
 @app.get("/query/{product}")
 async def direct_query(product: str, request: Request, format: str = "json"):
