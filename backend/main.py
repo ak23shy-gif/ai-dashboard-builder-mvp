@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -392,13 +393,21 @@ async def query_rows(q):
 
 
 
+
+def normalize_pasted_url(value):
+    target = value.strip()
+    match = re.fullmatch(r"\[[^\]]+\]\((.+)\)", target, flags=re.S)
+    if match:
+        target = match.group(1).strip()
+    return target.replace(r"\_", "_").replace(r"\&", "&")
+
 class ApplyQueryRequest(BaseModel):
     url: str = Field(min_length=1, max_length=20000)
 
 
 @app.post("/query/apply")
 async def apply_direct_query(payload: ApplyQueryRequest):
-    target = payload.url.strip()
+    target = normalize_pasted_url(payload.url)
     parsed = httpx.URL(target)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(422, "Enter a valid HTTP or HTTPS query URL.")

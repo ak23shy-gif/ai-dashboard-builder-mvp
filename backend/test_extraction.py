@@ -383,10 +383,10 @@ def test_apply_direct_query_previews_typed_url(client, monkeypatch):
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
         async def get(self, url, **kw):
-            assert url == "https://api.example.test/report?format=json"
+            assert url == "https://api.example.test/report?api_key=abc&format=json"
             return httpx.Response(200, json=[{"Date": "2026-09-01", "Active Users": 7}], request=httpx.Request("GET", url))
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
-    r = client.post("/query/apply", json={"url": "https://api.example.test/report?format=json"}, headers={"Origin": main.ORIGIN})
+    r = client.post("/query/apply", json={"url": "[query](https://api.example.test/report?api\_key=abc\&format=json)"}, headers={"Origin": main.ORIGIN})
     assert r.status_code == 200, r.text
     assert r.json() == {"columns": ["date", "active_users"], "rows": [{"date": "2026-09-01", "active_users": 7}], "count": 1}
 
