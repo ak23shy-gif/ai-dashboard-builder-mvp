@@ -337,6 +337,44 @@ def test_direct_query_requires_key_and_streams_ga4(client, monkeypatch):
     assert data == [{"date": "2026-08-01", "sessions": 12}]
 
 
+
+def test_direct_query_targets_are_self_contained(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    seen = []
+    class Fake:
+        def __init__(self, connection_id):
+            self.connection_id = connection_id
+        async def discover(self):
+            return [{"id": f"properties/{self.connection_id[-1]}", "name": self.connection_id}]
+        async def fields(self, rid):
+            return {"dimensions": ["date"], "metrics": ["sessions"]}
+        async def extract(self, q):
+            seen.append((q.connection_id, q.resource, q.options.get("filters")))
+            yield [{"date": "2026-08-01", "sessions": len(seen)}]
+    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake(connection_id))
+    targets = json.dumps([
+        {"connection_id": "conn1", "resource": "properties/1", "options": {}},
+        {"connection_id": "conn2", "resource": "properties/2", "options": {}},
+    ])
+    from urllib.parse import quote
+    url = "/query/ga4?workspace=user1&date_from=2026-08-01&date_to=2026-08-02&fields=date,sessions&filters=" + quote('{"dimensionFilter":{"filter":{"fieldName":"country"}}}') + "&targets=" + quote(targets) + "&api_key=query-secret"
+    assert client.get(url).json() == [{"date": "2026-08-01", "sessions": 1}, {"date": "2026-08-01", "sessions": 2}]
+    assert seen == [("conn1", "properties/1", '{"dimensionFilter":{"filter":{"fieldName":"country"}}}'), ("conn2", "properties/2", '{"dimensionFilter":{"filter":{"fieldName":"country"}}}')]
+
+
+def test_ga4_filter_json_is_sent_to_data_api():
+    calls = []
+    async def api(method, url, **kw):
+        calls.append(kw["json"])
+        return {"rows": [], "rowCount": 0}
+    async def run():
+        q = SimpleNamespace(resource="properties/1", start="2026-08-01", end="2026-08-02", dimensions=["country"], metrics=["sessions"], options={"filters": '{"dimensionFilter":{"filter":{"fieldName":"country"}}}'})
+        batches = [b async for b in GA4(api).extract(q)]
+        assert batches == [[]]
+        assert calls[0]["dimensionFilter"] == {"filter": {"fieldName": "country"}}
+    asyncio.run(run())
+
 def test_query_key_is_created_for_connected_workspace(client):
     login(client)
     first = client.get("/query/key").json()["api_key"]

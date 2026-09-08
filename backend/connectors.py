@@ -57,8 +57,21 @@ class GA4(Connector):
 
     async def extract(self, q):
         offset = 0
+        base_body = {"dateRanges": [{"startDate": q.start, "endDate": q.end}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": int(getattr(q, "options", {}).get("limit", 10000) or 10000), "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]}
+        filters = getattr(q, "options", {}).get("filters")
+        if filters:
+            try:
+                parsed = json.loads(filters)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Filters must be valid JSON.") from exc
+            if not isinstance(parsed, Mapping):
+                raise ValueError("Filters must be a JSON object.")
+            for key in ("dimensionFilter", "metricFilter"):
+                if key in parsed:
+                    base_body[key] = parsed[key]
         while True:
-            d = await self.api("POST", f"https://analyticsdata.googleapis.com/v1beta/{q.resource}:runReport", json={"dateRanges": [{"startDate": q.start, "endDate": q.end}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": 10000, "offset": offset, "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]})
+            body = {**base_body, "offset": offset}
+            d = await self.api("POST", f"https://analyticsdata.googleapis.com/v1beta/{q.resource}:runReport", json=body)
             rows = d.get("rows", [])
             output = []
             for r in rows:

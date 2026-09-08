@@ -335,11 +335,43 @@ def split_csv(value):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def parse_targets(value):
+    if not value:
+        return []
+    try:
+        targets = json.loads(value)
+    except json.JSONDecodeError:
+        raise HTTPException(422, "targets must be a JSON array.")
+    if not isinstance(targets, list) or len(targets) > 100:
+        raise HTTPException(422, "targets must be an array with 1 to 100 sources.")
+    parsed = []
+    for target in targets:
+        if not isinstance(target, dict):
+            raise HTTPException(422, "Each target must be an object.")
+        connection_id = str(target.get("connection_id", "")).strip()
+        resource_id = str(target.get("resource", "")).strip()
+        options = target.get("options") or {}
+        if not connection_id or not resource_id or not isinstance(options, dict):
+            raise HTTPException(422, "Each target needs connection_id, resource, and optional options.")
+        parsed.append({"connection_id": connection_id, "resource": resource_id, "options": {str(k): str(v) for k, v in options.items() if v is not None}})
+    return parsed
+
+
 async def query_rows(q):
-    con = connector_for_query(q["product"], q.get("workspace", ""), q.get("connection_id", ""))
-    for resource_id in q["resources"]:
+    targets = q.get("targets") or [{"connection_id": q.get("connection_id", ""), "resource": resource_id, "options": {}} for resource_id in q["resources"]]
+    connector_cache, discovery_cache = {}, {}
+    for target in targets:
+        resource_id = target["resource"]
+        target_options = {**q["options"], **target.get("options", {})}
         if q["product"] != "api":
-            discovered = {r["id"]: r for r in await con.discover()}
+            cid = target.get("connection_id") or q.get("connection_id", "")
+            con = connector_cache.get(cid)
+            if con is None:
+                con = connector_for_query(q["product"], q.get("workspace", ""), cid)
+                connector_cache[cid] = con
+            if cid not in discovery_cache:
+                discovery_cache[cid] = {r["id"]: r for r in await con.discover()}
+            discovered = discovery_cache[cid]
             if resource_id not in discovered:
                 raise HTTPException(403, f"Resource is not accessible: {resource_id}")
             meta = {**CATALOG[q["product"]], **await con.fields(resource_id)}
@@ -348,11 +380,12 @@ async def query_rows(q):
                 fields = q["fields"]
                 dimensions = [field for field in fields if field in meta["dimensions"]]
                 metrics = [field for field in fields if field in meta["metrics"]]
-            query = Query(product=q["product"], resource=resource_id, start=q["start"], end=q["end"], dimensions=dimensions, metrics=metrics, options=q["options"], connection_id=q.get("connection_id", ""))
+            query = Query(product=q["product"], resource=resource_id, start=q["start"], end=q["end"], dimensions=dimensions, metrics=metrics, options=target_options, connection_id=cid)
             if not set(query.dimensions).issubset(meta["dimensions"]) or not set(query.metrics).issubset(meta["metrics"]):
                 raise HTTPException(422, "Choose fields supported by this product.")
         else:
-            query = Query(product="api", resource="endpoint", start=q["start"], end=q["end"], dimensions=[], metrics=[], options=q["options"], connection_id="api")
+            con = connector_for_query("api", q.get("workspace", "local-api"), "api")
+            query = Query(product="api", resource="endpoint", start=q["start"], end=q["end"], dimensions=[], metrics=[], options=target_options, connection_id="api")
         async for batch in con.extract(query):
             for row in batch:
                 yield row
@@ -368,20 +401,28 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         raise HTTPException(422, "Add workspace to the query.")
     require_query_key(request, workspace)
     resources = split_csv(params.get("resources") or params.get("resource", ""))
-    if product != "api" and not resources:
-        raise HTTPException(422, "Add resource or resources to the query.")
+    targets = parse_targets(params.get("targets", ""))
+    if product != "api" and not resources and not targets:
+        raise HTTPException(422, "Add resource, resources, or targets to the query.")
+    if targets and not resources:
+        resources = [target["resource"] for target in targets]
     start = params.get("date_from") or params.get("start") or date.today().isoformat()
     end = params.get("date_to") or params.get("end") or date.today().isoformat()
     options = {k: v for k, v in params.items() if k.startswith("option_")}
     options = {k.removeprefix("option_"): v for k, v in options.items()}
+    if params.get("filters"):
+        options["filters"] = params["filters"]
     if product == "api":
         options.update({k: params[k] for k in ("url", "method", "headers", "body", "data_path", "limit") if k in params})
         resources = ["endpoint"]
+        if not targets:
+            targets = [{"connection_id": "api", "resource": "endpoint", "options": options}]
     spec = {
         "product": product,
         "workspace": workspace,
         "connection_id": params.get("connection_id", ""),
         "resources": resources,
+        "targets": targets,
         "start": start,
         "end": end,
         "fields": split_csv(params.get("fields", "")),
