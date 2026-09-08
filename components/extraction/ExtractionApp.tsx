@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Braces, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Copy, Database, ExternalLink, FileJson, FileSpreadsheet, FolderOpen, History, Layers3, Link2, Loader2, LockKeyhole, Play, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Unplug, X } from 'lucide-react';
 import './extraction.css';
@@ -161,7 +161,7 @@ export function ExtractionApp() {
     return () => { active = false; };
   }, [selectedKeys, resources, product, status.connected, apiOptions]);
   useEffect(() => {
-    if (!job?.id) return;
+    if (!job?.id || job.id === 'direct-query') return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -303,3 +303,4 @@ export function ExtractionApp() {
     {setup && <div className="gx-modal-backdrop" onClick={() => setSetup(false)}><section className="gx-modal" role="dialog" aria-modal="true" aria-labelledby="setup-title" onClick={e => e.stopPropagation()}><button autoFocus className="gx-modal-close" aria-label="Close setup guide" onClick={() => setSetup(false)}><X size={20} /></button><div className="gx-eyebrow">ONE-TIME LOCAL SETUP</div><h2 id="setup-title">Connect your Google Cloud project</h2><p>Google requires your own OAuth client for this personal app. Once configured, the Connect Google button discovers resources you already have permission to access.</p><ol><li>Create a Google Cloud project and enable the APIs for the products you want to extract.</li><li>Configure the OAuth consent screen. Add your Google email as a test user if the app is in Testing.</li><li>Create an OAuth client of type <strong>Web application</strong>. Set this exact authorized redirect URI:<code>http://127.0.0.1:3001/extract-api/auth/callback</code></li><li>Copy <code>backend/.env.example</code> to <code>backend/.env</code>. Set your client ID, client secret, and a generated encryption key. Keep these on the server.</li><li>Install and start the Python backend:<code>python -m pip install -r backend/requirements.txt<br />python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000</code></li><li>Start the frontend with <code>npm run dev</code> and open <strong>http://127.0.0.1:3001</strong>.</li></ol><p className="gx-note">Google Ads needs a developer token. Business Profile needs API approval. See README.md for API names, incremental behavior, and source limitations.</p><div className="gx-modal-footer"><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="gx-button gx-secondary">Google Cloud Console<ExternalLink size={14} /></a><button className="gx-button gx-primary" onClick={() => { setSetup(false); request<Status>('/status').then(setStatus).catch(e => setError(e.message)); }}>Check connection setup<RefreshCw size={14} /></button></div></section></div>}
   </div>;
 }
+

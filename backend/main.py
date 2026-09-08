@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -408,21 +408,53 @@ class ApplyQueryRequest(BaseModel):
 @app.post("/query/apply")
 async def apply_direct_query(payload: ApplyQueryRequest):
     target = normalize_pasted_url(payload.url)
+    parsed_std = urlparse(target)
     parsed = httpx.URL(target)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(422, "Enter a valid HTTP or HTTPS query URL.")
-    async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=20), follow_redirects=True) as client:
-        response = await client.get(target, headers={"Accept": "application/json"})
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise HTTPException(response.status_code if response.is_error else 422, "The query did not return JSON. Use format=json for table preview.") from exc
-    if response.is_error:
-        detail = data.get("detail") if isinstance(data, dict) else None
-        raise HTTPException(response.status_code, detail or f"Query failed with HTTP {response.status_code}.")
-    rows = [flatten(row) for row in find_rows(data)]
+    if parsed_std.path.startswith("/query/"):
+        product = parsed_std.path.rsplit("/", 1)[-1]
+        if product not in CONNECTORS:
+            raise HTTPException(404, "Unknown connector.")
+        qs = {k: v[-1] for k, v in parse_qs(parsed_std.query, keep_blank_values=True).items()}
+        workspace = qs.get("workspace", "local-api" if product == "api" else "")
+        supplied = qs.get("api_key", "")
+        if not supplied or not secrets.compare_digest(supplied, get_workspace_query_key(workspace)):
+            raise HTTPException(401, "Valid api_key is required.")
+        resources = split_csv(qs.get("resources") or qs.get("resource", ""))
+        targets = parse_targets(qs.get("targets", ""))
+        if product != "api" and not resources and not targets:
+            raise HTTPException(422, "Add resource, resources, or targets to the query.")
+        if targets and not resources:
+            resources = [target["resource"] for target in targets]
+        options = {k.removeprefix("option_"): v for k, v in qs.items() if k.startswith("option_")}
+        if qs.get("filters"):
+            options["filters"] = qs["filters"]
+        if product == "api":
+            options.update({k: qs[k] for k in ("url", "method", "headers", "body", "data_path", "limit") if k in qs})
+            resources = ["endpoint"]
+            if not targets:
+                targets = [{"connection_id": "api", "resource": "endpoint", "options": options}]
+        spec = {"product": product, "workspace": workspace, "connection_id": qs.get("connection_id", ""), "resources": resources, "targets": targets, "start": qs.get("date_from") or qs.get("start") or date.today().isoformat(), "end": qs.get("date_to") or qs.get("end") or date.today().isoformat(), "fields": split_csv(qs.get("fields", "")), "dimensions": split_csv(qs.get("dimensions", "")), "metrics": split_csv(qs.get("metrics", "")), "options": options}
+        rows = []
+        async for row in query_rows(spec):
+            rows.append(row)
+            if len(rows) >= 200:
+                break
+    else:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=20), follow_redirects=True) as client:
+            response = await client.get(target, headers={"Accept": "application/json"})
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise HTTPException(response.status_code if response.is_error else 422, "The query did not return JSON. Use format=json for table preview.") from exc
+        if response.is_error:
+            detail = data.get("detail") if isinstance(data, dict) else None
+            raise HTTPException(response.status_code, detail or f"Query failed with HTTP {response.status_code}.")
+        rows = [flatten(row) for row in find_rows(data)][:200]
     columns = list(dict.fromkeys(key for row in rows for key in row))
-    return {"columns": column_names(columns), "rows": [dict(zip(column_names(row.keys()), row.values())) for row in rows], "count": len(rows)}
+    clean_columns = column_names(columns)
+    return {"columns": clean_columns, "rows": [dict(zip(column_names(row.keys()), row.values())) for row in rows], "count": len(rows)}
 
 @app.get("/query/{product}")
 async def direct_query(product: str, request: Request, format: str = "json"):
