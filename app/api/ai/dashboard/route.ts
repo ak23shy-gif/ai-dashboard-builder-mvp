@@ -57,6 +57,18 @@ function timeoutSignal() {
   return { signal: controller.signal, timeout };
 }
 
+function geminiThinkingConfig(model: string) {
+  if (model.startsWith('gemini-2.5')) {
+    return { thinkingBudget: 0 };
+  }
+
+  if (model.startsWith('gemini-3')) {
+    return { thinkingLevel: 'low' };
+  }
+
+  return undefined;
+}
+
 async function readProviderJson<T>(response: Response): Promise<T> {
   const text = await response.text();
 
@@ -186,11 +198,11 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
 
 async function generateWithGemini(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
   const models = uniqueValues([
+    'gemini-3.5-flash-lite',
     process.env.GEMINI_MODEL || 'gemini-3.8-flash',
     'gemini-3.8-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
     'gemini-2.5-flash',
   ]);
   const failures: string[] = [];
@@ -224,6 +236,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
             responseMimeType: 'application/json',
             temperature: 0.2,
             maxOutputTokens: 4096,
+            thinkingConfig: geminiThinkingConfig(model),
           },
         }),
       },
