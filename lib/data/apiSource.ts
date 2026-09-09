@@ -13,6 +13,18 @@ type RawRow = Record<string, unknown>;
 const previewLimit = 1000;
 const apiTimeoutMs = 25000;
 
+function safeSourceLabel(url: string) {
+  const parsed = new URL(url);
+
+  ['api_key', 'key', 'token', 'access_token', 'auth', 'password'].forEach((key) => {
+    if (parsed.searchParams.has(key)) {
+      parsed.searchParams.set(key, 'REDACTED');
+    }
+  });
+
+  return parsed.toString();
+}
+
 function parseJsonObject(value: string | undefined, fallback: Record<string, string>) {
   if (!value?.trim()) {
     return fallback;
@@ -94,7 +106,9 @@ export async function previewApiSource(input: ApiSourceInput): Promise<ImportedD
       signal: AbortSignal.timeout(apiTimeoutMs),
     });
   } catch (error) {
-    const aborted = error instanceof Error && error.name === 'TimeoutError';
+    const aborted =
+      error instanceof Error &&
+      (error.name === 'TimeoutError' || error.name === 'AbortError' || error.message.toLowerCase().includes('timeout'));
     throw new Error(
       aborted
         ? `API request timed out after ${Math.round(apiTimeoutMs / 1000)} seconds. Try a shorter date range, fewer properties, or fewer metrics/dimensions.`
@@ -143,7 +157,7 @@ export async function previewApiSource(input: ApiSourceInput): Promise<ImportedD
   }
 
   return {
-    fileName: url,
+    fileName: safeSourceLabel(url),
     rows: normalisedRows,
     columns: [
       ...columns,
@@ -160,7 +174,7 @@ export async function previewApiSource(input: ApiSourceInput): Promise<ImportedD
     sourceType: 'api',
     dataContext: createDataContext({
       columns,
-      fileName: url,
+      fileName: safeSourceLabel(url),
       mappedColumns,
       processedRowCount: normalisedRows.length,
       processedRows: normalisedRows,

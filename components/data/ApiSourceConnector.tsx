@@ -12,6 +12,106 @@ type ApiSourceConnectorProps = {
   onDataImported: (dataset: ImportedDataset) => void;
 };
 
+type PreviewResult = { dataset?: ImportedDataset; error?: string };
+
+function sourceLabelFromUrl(value: string, resourceCount?: number) {
+  const parsed = new URL(value);
+  ['api_key', 'key', 'token', 'access_token', 'auth', 'password'].forEach((key) => {
+    if (parsed.searchParams.has(key)) {
+      parsed.searchParams.set(key, 'REDACTED');
+    }
+  });
+
+  return resourceCount ? `${parsed.origin}${parsed.pathname} (${resourceCount} resources)` : parsed.toString();
+}
+
+function splitGoogleExtractorUrl(value: string) {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(value);
+  } catch {
+    return [];
+  }
+
+  if (!parsed.hostname.includes('google-api-data-extractor-backend.onrender.com') || !parsed.pathname.includes('/query/ga4')) {
+    return [];
+  }
+
+  const resources = (parsed.searchParams.get('resources') || '')
+    .split(',')
+    .map((resource) => resource.trim())
+    .filter(Boolean);
+
+  if (resources.length <= 1) {
+    return [];
+  }
+
+  let targets: Array<{ connection_id?: string; resource?: string; options?: Record<string, unknown> }> = [];
+  const targetsParam = parsed.searchParams.get('targets');
+
+  if (targetsParam) {
+    try {
+      const parsedTargets = JSON.parse(targetsParam) as unknown;
+      targets = Array.isArray(parsedTargets) ? parsedTargets : [];
+    } catch {
+      targets = [];
+    }
+  }
+
+  return resources.map((resource) => {
+    const next = new URL(parsed.toString());
+    const target = targets.find((item) => item.resource === resource);
+
+    next.searchParams.set('resources', resource);
+    next.searchParams.set('resource', resource);
+
+    if (target) {
+      next.searchParams.set('targets', JSON.stringify([target]));
+    } else {
+      next.searchParams.delete('targets');
+    }
+
+    return { resource, url: next.toString() };
+  });
+}
+
+function mergeDatasets(sourceUrl: string, datasets: ImportedDataset[]): ImportedDataset {
+  const first = datasets[0];
+  const rows = datasets.flatMap((dataset) => dataset.rows);
+  const columns = Array.from(new Set(datasets.flatMap((dataset) => dataset.columns)));
+  const rawRowCount = datasets.reduce((total, dataset) => total + dataset.rawRowCount, 0);
+  const processedRowCount = datasets.reduce((total, dataset) => total + dataset.processedRowCount, 0);
+  const dates = rows.map((row) => row.date).filter(Boolean).sort();
+  const timeRange = dates.length
+    ? {
+        label: `${dates[0]} to ${dates[dates.length - 1]}`,
+        frequency: 'Monthly/periodic',
+        start: dates[0],
+        end: dates[dates.length - 1],
+      }
+    : first.dataContext?.timeRange;
+
+  return {
+    ...first,
+    fileName: sourceLabelFromUrl(sourceUrl, datasets.length),
+    rows,
+    columns,
+    rawRowCount,
+    processedRowCount,
+    isLimited: datasets.some((dataset) => dataset.isLimited),
+    dataContext: first.dataContext
+      ? {
+          ...first.dataContext,
+          sourceName: sourceLabelFromUrl(sourceUrl, datasets.length),
+          rawRowCount,
+          processedRowCount,
+          timeRange,
+        }
+      : undefined,
+  };
+}
+
 export function ApiSourceConnector({ onDataImported }: ApiSourceConnectorProps) {
   const [apiSource, setApiSource] = useState<ApiSourceInput>({
     url: '',
@@ -26,7 +126,7 @@ export function ApiSourceConnector({ onDataImported }: ApiSourceConnectorProps) 
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  async function readPreviewResult(response: Response) {
+  async function readPreviewResult(response: Response): Promise<PreviewResult> {
     const text = await response.text();
 
     if (!text.trim()) {
@@ -52,6 +152,21 @@ export function ApiSourceConnector({ onDataImported }: ApiSourceConnectorProps) 
     setApiSource((current) => ({ ...current, [key]: value }));
   }
 
+  async function previewSingleApiSource(source: ApiSourceInput) {
+    const response = await fetch('/api/data/rest/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(source),
+    });
+    const result = await readPreviewResult(response);
+
+    if (!response.ok || !result.dataset) {
+      throw new Error(result.error || 'API preview did not return a dataset.');
+    }
+
+    return result.dataset;
+  }
+
   async function handlePreviewApi() {
     if (!apiSource.url.trim()) {
       setState({ status: 'error', message: 'Please enter an API URL first.' });
@@ -62,25 +177,29 @@ export function ApiSourceConnector({ onDataImported }: ApiSourceConnectorProps) 
     setState({ status: 'idle', message: 'Calling API and reading JSON rows...' });
 
     try {
-      const response = await fetch('/api/data/rest/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiSource),
-      });
-      const result = await readPreviewResult(response);
+      const splitSources = apiSource.method === 'GET' ? splitGoogleExtractorUrl(apiSource.url) : [];
+      let dataset: ImportedDataset;
 
-      if (!response.ok) {
-        throw new Error(result.error || 'API preview failed.');
+      if (splitSources.length) {
+        const datasets: ImportedDataset[] = [];
+
+        for (const [index, source] of splitSources.entries()) {
+          setState({
+            status: 'idle',
+            message: `Large GA4 request detected. Loading resource ${index + 1} of ${splitSources.length}...`,
+          });
+          datasets.push(await previewSingleApiSource({ ...apiSource, url: source.url }));
+        }
+
+        dataset = mergeDatasets(apiSource.url, datasets);
+      } else {
+        dataset = await previewSingleApiSource(apiSource);
       }
 
-      if (!result.dataset) {
-        throw new Error(result.error || 'API preview did not return a dataset.');
-      }
-
-      onDataImported(result.dataset);
+      onDataImported(dataset);
       setState({
         status: 'success',
-        message: `Dashboard generated from API. Using ${result.dataset.processedRowCount.toLocaleString('en-GB')} usable rows.`,
+        message: `Dashboard generated from API. Using ${dataset.processedRowCount.toLocaleString('en-GB')} usable rows.`,
       });
     } catch (error) {
       setState({
