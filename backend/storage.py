@@ -59,7 +59,8 @@ class PostgresConnection:
         return cur
 
     def executescript(self, script):
-        self.conn.execute(script)
+        for statement in [part.strip() for part in script.split(";") if part.strip()]:
+            self.conn.execute(statement)
 
     @property
     def total_changes(self):
