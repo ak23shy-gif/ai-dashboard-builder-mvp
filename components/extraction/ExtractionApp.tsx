@@ -94,6 +94,14 @@ export function ExtractionApp() {
       params.set('date_to', end);
       params.set('dimensions', dimensions.join(','));
       params.set('metrics', metrics.join(','));
+      if (product === 'ga4') {
+        params.set('exclude_recent_days', '2');
+        params.set('chunk', 'monthly');
+        const ga4Fields = [...dimensions, ...metrics];
+        if (ga4Fields.includes('sessionPrimaryChannelGroup') || ga4Fields.includes('sessionDefaultChannelGroup')) {
+          params.set('ui_report', 'traffic_acquisition');
+        }
+      }
       Object.entries(options).forEach(([key, value]) => { if (value) params.set('option_' + key, value); });
       if (filters.trim()) params.set('filters', filters.trim());
     }

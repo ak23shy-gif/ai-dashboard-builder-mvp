@@ -533,6 +533,31 @@ def clean_projected_row(row, wanted, output_source_fields=None, output_aliases=N
     return {column_names([f])[0]: clean.get(column_names([f])[0]) for f in wanted if column_names([f])[0] in clean}
 
 
+def parse_safe_date(value, fallback=None):
+    raw = value or (fallback.isoformat() if isinstance(fallback, date) else fallback)
+    try:
+        return date.fromisoformat(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Use ISO dates (YYYY-MM-DD).")
+
+
+def apply_exclude_recent_days(start_value, end_value, params_or_options):
+    start = parse_safe_date(start_value, date.today())
+    end = parse_safe_date(end_value, date.today())
+    raw = params_or_options.get("exclude_recent_days") or params_or_options.get("freshness_lag_days")
+    if str(params_or_options.get("data_freshness", "")).lower() in ("final", "stable", "ui") and not raw:
+        raw = "2"
+    if raw not in (None, ""):
+        try:
+            lag = max(0, min(int(raw), 30))
+        except ValueError:
+            raise HTTPException(422, "exclude_recent_days must be a number.")
+        end = min(end, date.today() - timedelta(days=lag))
+    if start > end:
+        raise HTTPException(422, "Date range ends before it starts after freshness delay.")
+    return start.isoformat(), end.isoformat()
+
+
 def ga4_targets_from_params(params):
     targets = parse_targets(params.get("targets", ""))
     if targets:
@@ -571,7 +596,11 @@ async def windsor_googleanalytics4(request: Request, format: str = "json"):
         options["filter"] = params["filter"]
     if params.get("filters"):
         options["filters"] = params["filters"]
-    spec = {"product": "ga4", "workspace": workspace, "connection_id": params.get("connection_id", ""), "resources": [t["resource"] for t in targets], "targets": targets, "start": params.get("date_from") or params.get("start") or date.today().isoformat(), "end": params.get("date_to") or params.get("end") or date.today().isoformat(), "fields": [], "dimensions": dimensions, "metrics": metrics, "options": options}
+    for key in ("chunk", "chunk_days", "chunk_months"):
+        if params.get(key):
+            options[key] = params[key]
+    start, end = apply_exclude_recent_days(params.get("date_from") or params.get("start"), params.get("date_to") or params.get("end"), params)
+    spec = {"product": "ga4", "workspace": workspace, "connection_id": params.get("connection_id", ""), "resources": [t["resource"] for t in targets], "targets": targets, "start": start, "end": end, "fields": [], "dimensions": dimensions, "metrics": metrics, "options": options}
     rows = []
     async for row in query_rows(spec):
         if output_source_fields:
@@ -609,12 +638,14 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         raise HTTPException(422, "Add resource, resources, or targets to the query.")
     if targets and not resources:
         resources = [target["resource"] for target in targets]
-    start = params.get("date_from") or params.get("start") or date.today().isoformat()
-    end = params.get("date_to") or params.get("end") or date.today().isoformat()
+    start, end = apply_exclude_recent_days(params.get("date_from") or params.get("start"), params.get("date_to") or params.get("end"), params)
     options = {k: v for k, v in params.items() if k.startswith("option_")}
     options = {k.removeprefix("option_"): v for k, v in options.items()}
     if params.get("filters"):
         options["filters"] = params["filters"]
+    for key in ("chunk", "chunk_days", "chunk_months"):
+        if params.get(key):
+            options[key] = params[key]
     if product == "api":
         options.update({k: params[k] for k in ("url", "method", "headers", "body", "data_path", "limit") if k in params})
         resources = ["endpoint"]

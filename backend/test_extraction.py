@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import time
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -446,3 +447,32 @@ def test_direct_ga4_query_ui_report_uses_same_planner(client, monkeypatch):
     url = "/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&ui_report=traffic_acquisition&dimensions=sessionPrimaryChannelGroup,sessionManualSource&metrics=sessions,activeUsers"
     assert client.get(url).json() == [{"session_primary_channel_group": "Direct", "sessions": 5, "active_users": 4}]
     assert seen == [(["sessionDefaultChannelGroup"], ["sessions", "activeUsers"])]
+
+
+def test_exclude_recent_days_caps_ga4_end_date(monkeypatch):
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 9)
+    monkeypatch.setattr(main, "date", FixedDate)
+    start, end = main.apply_exclude_recent_days("2026-09-01", "2026-09-09", {"exclude_recent_days": "2"})
+    assert (start, end) == ("2026-09-01", "2026-09-07")
+
+
+@pytest.mark.anyio
+async def test_ga4_extract_chunks_long_ranges_monthly():
+    from backend.connectors import GA4
+    calls = []
+    async def fake_api(method, url, **kwargs):
+        body = kwargs["json"]
+        calls.append(body["dateRanges"][0])
+        return {"rows": [], "rowCount": 0, "metricHeaders": [{"name": "sessions", "type": "TYPE_INTEGER"}]}
+    q = main.Query(product="ga4", resource="properties/1", start="2026-01-01", end="2026-03-15", dimensions=["date"], metrics=["sessions"], options={"chunk": "monthly"})
+    batches = []
+    async for batch in GA4(fake_api).extract(q):
+        batches.append(batch)
+    assert calls == [
+        {"startDate": "2026-01-01", "endDate": "2026-01-31"},
+        {"startDate": "2026-02-01", "endDate": "2026-03-03"},
+        {"startDate": "2026-03-04", "endDate": "2026-03-15"},
+    ]

@@ -3,6 +3,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
+from datetime import date, timedelta
 from urllib.parse import quote
 
 import httpx
@@ -56,35 +57,49 @@ class GA4(Connector):
         return {"dimensions": [x["apiName"] for x in d.get("dimensions", [])], "metrics": [x["apiName"] for x in d.get("metrics", [])]}
 
     async def extract(self, q):
-        offset = 0
-        base_body = {"dateRanges": [{"startDate": q.start, "endDate": q.end}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": int(getattr(q, "options", {}).get("limit", 10000) or 10000), "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]}
-        filters = getattr(q, "options", {}).get("filters")
-        if filters:
-            try:
-                parsed = json.loads(filters)
-            except json.JSONDecodeError as exc:
-                raise ValueError("Filters must be valid JSON.") from exc
-            if not isinstance(parsed, Mapping):
-                raise ValueError("Filters must be a JSON object.")
-            for key in ("dimensionFilter", "metricFilter"):
-                if key in parsed:
-                    base_body[key] = parsed[key]
-        while True:
-            body = {**base_body, "offset": offset}
-            d = await self.api("POST", f"https://analyticsdata.googleapis.com/v1beta/{q.resource}:runReport", json=body)
-            rows = d.get("rows", [])
-            output = []
-            for r in rows:
-                row = dict(zip(q.dimensions, [v["value"] for v in r.get("dimensionValues", [])]))
-                for header, value in zip(d.get("metricHeaders", []), r.get("metricValues", [])):
-                    row[header["name"]] = int(value["value"]) if header.get("type") == "TYPE_INTEGER" else float(value["value"])
-                if "date" in row and re.fullmatch(r"\d{8}", row["date"]):
-                    row["date"] = f'{row["date"][:4]}-{row["date"][4:6]}-{row["date"][6:]}'
-                output.append(row)
-            yield output
-            offset += len(rows)
-            if not rows or offset >= int(d.get("rowCount", 0)):
-                break
+        options = getattr(q, "options", {}) or {}
+        start_date = date.fromisoformat(q.start)
+        end_date = date.fromisoformat(q.end)
+        chunk_days = int(options.get("chunk_days") or 0)
+        if not chunk_days and str(options.get("chunk", "")).lower() in ("1", "true", "yes", "monthly"):
+            chunk_days = 31
+        if not chunk_days and options.get("chunk_months"):
+            chunk_days = max(1, int(options.get("chunk_months"))) * 31
+        if not chunk_days:
+            chunk_days = max(1, (end_date - start_date).days + 1)
+        current = start_date
+        while current <= end_date:
+            chunk_end = min(end_date, current + timedelta(days=chunk_days - 1))
+            offset = 0
+            base_body = {"dateRanges": [{"startDate": current.isoformat(), "endDate": chunk_end.isoformat()}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": int(options.get("limit", 10000) or 10000), "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]}
+            filters = options.get("filters")
+            if filters:
+                try:
+                    parsed = json.loads(filters)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Filters must be valid JSON.") from exc
+                if not isinstance(parsed, Mapping):
+                    raise ValueError("Filters must be a JSON object.")
+                for key in ("dimensionFilter", "metricFilter"):
+                    if key in parsed:
+                        base_body[key] = parsed[key]
+            while True:
+                body = {**base_body, "offset": offset}
+                d = await self.api("POST", f"https://analyticsdata.googleapis.com/v1beta/{q.resource}:runReport", json=body)
+                rows = d.get("rows", [])
+                output = []
+                for r in rows:
+                    row = dict(zip(q.dimensions, [v["value"] for v in r.get("dimensionValues", [])]))
+                    for header, value in zip(d.get("metricHeaders", []), r.get("metricValues", [])):
+                        row[header["name"]] = int(value["value"]) if header.get("type") == "TYPE_INTEGER" else float(value["value"])
+                    if "date" in row and re.fullmatch(r"\d{8}", row["date"]):
+                        row["date"] = f'{row["date"][:4]}-{row["date"][4:6]}-{row["date"][6:]}'
+                    output.append(row)
+                yield output
+                offset += len(rows)
+                if not rows or offset >= int(d.get("rowCount", 0)):
+                    break
+            current = chunk_end + timedelta(days=1)
 
 
 class Ads(Connector):
