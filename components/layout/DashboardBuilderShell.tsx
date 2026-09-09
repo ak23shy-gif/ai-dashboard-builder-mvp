@@ -63,6 +63,7 @@ export function DashboardBuilderShell() {
   const [sourceLabel, setSourceLabel] = useState('Sample data');
   const [dataContext, setDataContext] = useState<DashboardDataContext | undefined>();
   const [activeTheme, setActiveTheme] = useState<AppTheme>('light');
+  const [dashboardRenderVersion, setDashboardRenderVersion] = useState(0);
 
   const dashboardConfig = useMemo(
     () => dashboards.find((dashboard) => dashboard.id === activeDashboardId)?.dashboard || validateDashboardConfig(defaultDashboardConfig),
@@ -116,13 +117,17 @@ export function DashboardBuilderShell() {
       id: activeDashboardId,
     });
 
-    setDashboards((currentDashboards) =>
-      currentDashboards.map((dashboard) =>
-        dashboard.id === activeDashboardId
-          ? { ...dashboard, name: validated.title, status, dashboard: validated }
-          : dashboard,
-      ),
-    );
+    setDashboards((currentDashboards) => {
+      const dashboardExists = currentDashboards.some((dashboard) => dashboard.id === activeDashboardId);
+      const updatedDashboard = { id: activeDashboardId, name: validated.title, status, dashboard: validated };
+
+      return dashboardExists
+        ? currentDashboards.map((dashboard) =>
+            dashboard.id === activeDashboardId ? { ...dashboard, ...updatedDashboard } : dashboard,
+          )
+        : [updatedDashboard, ...currentDashboards];
+    });
+    setDashboardRenderVersion((current) => current + 1);
   }
 
   function handleAddDashboard() {
@@ -225,6 +230,7 @@ export function DashboardBuilderShell() {
         />
         <DashboardCanvas
           dashboardConfig={dashboardConfig}
+          renderVersion={dashboardRenderVersion}
           rows={dataRows}
           sourceLabel={sourceLabel}
           onChangeChartType={handleChangeChartType}

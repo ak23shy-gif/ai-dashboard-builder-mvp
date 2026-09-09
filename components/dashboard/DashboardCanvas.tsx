@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Database } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ const defaultFilters: DashboardFilters = {
 
 type DashboardCanvasProps = {
   dashboardConfig: DashboardConfig;
+  renderVersion: number;
   rows: MarketingRow[];
   sourceLabel: string;
   onChangeChartType: (componentId: string) => void;
@@ -38,6 +39,7 @@ type DashboardCanvasProps = {
 
 export function DashboardCanvas({
   dashboardConfig,
+  renderVersion,
   rows,
   sourceLabel,
   onChangeChartType,
@@ -46,6 +48,11 @@ export function DashboardCanvas({
 }: DashboardCanvasProps) {
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
   const [activeView, setActiveView] = useState<'report' | 'model'>('report');
+
+  useEffect(() => {
+    setActiveView('report');
+    setFilters(defaultFilters);
+  }, [renderVersion]);
 
   const activeRows = rows.length ? rows : marketingData;
   const brandOptions = useMemo(() => topDimensionValues(activeRows, 'brand', 100), [activeRows]);
