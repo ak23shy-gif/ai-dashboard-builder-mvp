@@ -1,4 +1,5 @@
 import { validateDashboardConfig } from '@/lib/ai/dashboardSchema';
+import { createDashboardFromDataContext } from '@/lib/ai/dataContextDashboard';
 import type { ImportedDataset } from '@/lib/data/importData';
 import type { DashboardConfig } from '@/types/dashboard';
 
@@ -36,6 +37,10 @@ function isUnitLike(value: string | undefined) {
 }
 
 export function createDashboardFromImportedDataset(imported: ImportedDataset): DashboardConfig {
+  if (imported.dataContext) {
+    return createDashboardFromDataContext('Create a professional dashboard from the connected dataset.', undefined, imported.dataContext);
+  }
+
   const primaryDimension = cleanLabel(imported.mappedColumns.brand, 'Primary Dimension');
   const secondaryDimension = cleanLabel(imported.mappedColumns.channel, 'Secondary Dimension');
   const primaryMeasure = cleanLabel(imported.mappedColumns.leads, 'Primary Volume');

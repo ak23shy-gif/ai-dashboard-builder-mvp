@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { buildDashboardSystemPrompt, buildDashboardUserPrompt, dashboardJsonSchema } from '@/lib/ai/dashboardPrompt';
 import { blankDashboardConfig, validateDashboardConfig } from '@/lib/ai/dashboardSchema';
+import { createDashboardFromDataContext } from '@/lib/ai/dataContextDashboard';
 import { generateLocalDashboard } from '@/lib/ai/demoDashboardGenerator';
 import type { DashboardDataContext } from '@/lib/data/importData';
 import type { DashboardConfig } from '@/types/dashboard';
@@ -127,9 +128,38 @@ function parseDashboardPayload(outputText: string) {
   }
 }
 
-function localPlannerResponse(prompt: string, currentDashboard: DashboardConfig | undefined, reason: string) {
+function finalDashboard(
+  generatedDashboard: DashboardConfig,
+  prompt: string,
+  currentDashboard: DashboardConfig | undefined,
+  dataContext: DashboardDataContext | undefined,
+) {
+  if (!dataContext) {
+    return validateDashboardConfig(generatedDashboard);
+  }
+
+  const generated = validateDashboardConfig(generatedDashboard);
+  const dataAwareDashboard = createDashboardFromDataContext(prompt, currentDashboard, dataContext);
+
+  return validateDashboardConfig({
+    ...dataAwareDashboard,
+    id: generated.id || dataAwareDashboard.id,
+    title: dataAwareDashboard.title,
+    description: dataAwareDashboard.description,
+    components: dataAwareDashboard.components,
+  });
+}
+
+function localPlannerResponse(
+  prompt: string,
+  currentDashboard: DashboardConfig | undefined,
+  reason: string,
+  dataContext?: DashboardDataContext,
+) {
   return NextResponse.json({
-    dashboard: generateLocalDashboard(prompt, currentDashboard),
+    dashboard: dataContext
+      ? createDashboardFromDataContext(prompt, currentDashboard, dataContext)
+      : generateLocalDashboard(prompt, currentDashboard),
     source: 'local',
     warning: reason,
   });
@@ -175,23 +205,29 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
       prompt,
       currentDashboard,
       `Local planner used because OpenAI returned: ${result.error?.message || 'request failed'}`,
+      dataContext,
     );
   }
 
   const outputText = extractOutputText(result);
 
   if (!outputText) {
-    return localPlannerResponse(prompt, currentDashboard, 'Local planner used because OpenAI returned an empty response.');
+    return localPlannerResponse(prompt, currentDashboard, 'Local planner used because OpenAI returned an empty response.', dataContext);
   }
 
   const parsed = parseDashboardPayload(outputText);
 
   if (!parsed.dashboard) {
-    return localPlannerResponse(prompt, currentDashboard, 'Local planner used because the OpenAI response did not include a dashboard.');
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      'Local planner used because the OpenAI response did not include a dashboard.',
+      dataContext,
+    );
   }
 
   return NextResponse.json({
-    dashboard: validateDashboardConfig(parsed.dashboard),
+    dashboard: finalDashboard(parsed.dashboard, prompt, currentDashboard, dataContext),
     source: 'openai',
   });
 }
@@ -271,7 +307,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
     }
 
     return NextResponse.json({
-      dashboard: validateDashboardConfig(parsed.dashboard),
+      dashboard: finalDashboard(parsed.dashboard, prompt, currentDashboard, dataContext),
       source: 'gemini',
       model,
     });
@@ -283,6 +319,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
     `Local planner used because Gemini did not return a usable dashboard. Tried ${models.join(', ')}. Last issue: ${
       failures.at(-1) || 'request failed'
     }`,
+    dataContext,
   );
 }
 
@@ -334,19 +371,24 @@ export async function POST(request: Request) {
   try {
     if (provider === 'gemini') {
       if (!process.env.GEMINI_API_KEY) {
-        return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because GEMINI_API_KEY is missing.');
+        return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because GEMINI_API_KEY is missing.', body.dataContext);
       }
       return await generateWithGemini(prompt, body.currentDashboard, body.dataContext);
     }
 
     if (provider === 'openai') {
       if (!process.env.OPENAI_API_KEY) {
-        return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because OPENAI_API_KEY is missing.');
+        return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because OPENAI_API_KEY is missing.', body.dataContext);
       }
       return await generateWithOpenAI(prompt, body.currentDashboard, body.dataContext);
     }
 
-    return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because no cloud AI provider key is configured.');
+    return localPlannerResponse(
+      prompt,
+      body.currentDashboard,
+      'Local planner used because no cloud AI provider key is configured.',
+      body.dataContext,
+    );
   } catch (error) {
     const aborted = error instanceof Error && error.name === 'AbortError';
 
@@ -358,6 +400,7 @@ export async function POST(request: Request) {
         : `Local planner used because generation failed: ${
             error instanceof Error ? error.message : 'unexpected dashboard generation error'
           }`,
+      body.dataContext,
     );
   }
 }
