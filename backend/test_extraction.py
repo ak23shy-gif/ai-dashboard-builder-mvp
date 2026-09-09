@@ -337,8 +337,8 @@ def test_direct_query_requires_key_and_streams_ga4(client, monkeypatch):
     data = client.get(url + "&api_key=query-secret").json()
     assert data == [{"date": "2026-08-01", "sessions": 12}]
 
-    source_data = client.get(url.replace("fields=date,sessions", "fields=property_name,property_id,date,sessions") + "&api_key=query-secret").json()
-    assert source_data == [{"property_name": "Site", "property_id": "properties/1", "date": "2026-08-01", "sessions": 12}]
+    source_data = client.get(url.replace("fields=date,sessions", "fields=property_display_name,property_id,date,sessions") + "&api_key=query-secret").json()
+    assert source_data == [{"property_display_name": "Site", "property_id": "properties/1", "date": "2026-08-01", "sessions": 12}]
 
 
 
@@ -408,8 +408,8 @@ def test_windsor_style_ga4_endpoint_returns_data_wrapper(client, monkeypatch):
             assert q.dimensions == ["sessionPrimaryChannelGroup"] and q.metrics == ["sessions"]
             yield [{"sessionPrimaryChannelGroup": "Organic Search", "sessions": 12}]
     monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
-    url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&fields=property_name,sessionPrimaryChannelGroup,sessions&date_from=2026-08-01&date_to=2026-08-02"
-    assert client.get(url).json() == {"data": [{"property_name": "Site", "session_primary_channel_group": "Organic Search", "sessions": 12}]}
+    url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&fields=property_display_name,sessionPrimaryChannelGroup,sessions&date_from=2026-08-01&date_to=2026-08-02"
+    assert client.get(url).json() == {"data": [{"property_display_name": "Site", "session_primary_channel_group": "Organic Search", "sessions": 12}]}
 
 
 def test_windsor_style_ga4_traffic_acquisition_uses_ui_report_grain(client, monkeypatch):

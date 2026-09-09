@@ -495,7 +495,8 @@ async def apply_direct_query(payload: ApplyQueryRequest):
 
 
 GA4_METRIC_FIELDS = set(CATALOG["ga4"]["metrics"])
-GA4_SOURCE_FIELDS = {"source_google_account", "source_resource_id", "source_resource_name", "account_name", "property_id", "property_name"}
+GA4_SOURCE_FIELDS = {"source_google_account", "source_resource_id", "source_resource_name", "google_account_email", "account_name", "property_id", "property_name", "property_display_name"}
+GA4_PUBLIC_SOURCE_FIELDS = ["google_account_email", "property_id", "property_display_name"]
 GA4_TRAFFIC_ACQUISITION_ALIASES = {
     "sessionPrimaryChannelGroup": "sessionDefaultChannelGroup",
     "session_primary_channel_group": "sessionDefaultChannelGroup",
@@ -544,12 +545,16 @@ def ga4_ui_report_plan(fields, ui_report=""):
 def clean_projected_row(row, wanted, output_source_fields=None, output_aliases=None):
     if output_source_fields:
         row = {**row}
+        if "google_account_email" in output_source_fields:
+            row.setdefault("google_account_email", row.get("source_google_account"))
         if "account_name" in output_source_fields:
             row.setdefault("account_name", row.get("source_google_account"))
         if "property_id" in output_source_fields:
             row.setdefault("property_id", row.get("source_resource_id"))
         if "property_name" in output_source_fields:
             row.setdefault("property_name", row.get("source_resource_name"))
+        if "property_display_name" in output_source_fields:
+            row.setdefault("property_display_name", row.get("source_resource_name"))
     clean = {}
     for key, value in row.items():
         clean[column_names([key])[0]] = value
@@ -571,9 +576,11 @@ def ga4_api_dimensions(dimensions):
 
 def source_value_row(email, resource_id, resource_name):
     return {
+        "google_account_email": email,
         "account_name": email,
         "property_id": resource_id,
         "property_name": resource_name,
+        "property_display_name": resource_name,
         "source_google_account": email,
         "source_resource_id": resource_id,
         "source_resource_name": resource_name,
@@ -777,7 +784,7 @@ async def fields(product: str, resource: str, request: Request, connection_id: s
         raise HTTPException(403, "Select an accessible resource.")
     data = await con.fields(resource)
     if product == "ga4":
-        data["dimensions"] = list(dict.fromkeys(["account_name", "property_id", "property_name"] + data.get("dimensions", [])))
+        data["dimensions"] = list(dict.fromkeys(GA4_PUBLIC_SOURCE_FIELDS + data.get("dimensions", [])))
     return data
 
 
@@ -837,7 +844,7 @@ async def validate_query(q, request, discovery_cache=None, connector_cache=None)
     else:
         meta = {**CATALOG[q.product], **await con.fields(q.resource)}
         if q.product == "ga4":
-            meta["dimensions"] = list(dict.fromkeys(["account_name", "property_id", "property_name"] + list(meta["dimensions"])))
+            meta["dimensions"] = list(dict.fromkeys(GA4_PUBLIC_SOURCE_FIELDS + list(meta["dimensions"])))
     if len(set(q.dimensions)) != len(q.dimensions) or len(set(q.metrics)) != len(q.metrics):
         raise HTTPException(422, "Duplicate fields are not allowed.")
     if not set(q.dimensions).issubset(meta["dimensions"]) or not set(q.metrics).issubset(meta["metrics"]):
@@ -958,7 +965,7 @@ async def run_batch(jid, uid, prepared, columns, internal_columns=None):
                         if q.product == "api":
                             tagged.append(row)
                         else:
-                            source_values = {"account_name": email, "property_id": q.resource, "property_name": name, "source_google_account": email, "source_resource_id": q.resource, "source_resource_name": name}
+                            source_values = source_value_row(email, q.resource, name)
                             tagged.append(clean_projected_row({**row, **source_values}, internal_columns, internal_columns))
                     stored_columns = insert_rows(jid, tagged, internal_columns if q.product != "api" else columns, source=index, union=True)
                     with db() as c:
