@@ -151,8 +151,8 @@ def test_batch_combines_sources_with_provenance_and_scoped_dedup(client, monkeyp
     result = wait_job(client, r.json()["id"])
     assert result["status"] == "complete" and result["count"] == 2
     assert len(result["sources"]) == 2
-    assert {row["source_google_account"] for row in result["rows"]} == {"primary@example.com", "second@example.com"}
-    assert {row["source_resource_id"] for row in result["rows"]} == {"properties/1", "properties/2"}
+    assert result["columns"] == ["date", "sessions"]
+    assert result["rows"] == [{"date": "2026-08-01", "sessions": 10}, {"date": "2026-08-01", "sessions": 10}]
     assert len(client.get(f"/jobs/{result['id']}/export?format=json").json()) == 2
 
 
@@ -202,9 +202,8 @@ def test_combined_schema_handles_mismatched_headers_and_reserved_names(client, m
     r = client.post("/batches", json=spec(), headers={"Origin": main.ORIGIN})
     result = wait_job(client, r.json()["id"])
     rows = client.get(f"/jobs/{result['id']}/export?format=json").json()
-    assert rows[0]["source_resource_id"] == "properties/1"
-    assert rows[0]["source_resource_id_2"] == "user header"
-    assert rows[0]["only_second"] is None and rows[1]["only_primary"] is None
+    assert "source_resource_id" not in rows[0]
+    assert rows == [{"date": None, "sessions": None}, {"date": None, "sessions": None}]
     assert result["rows"] == rows
 
 

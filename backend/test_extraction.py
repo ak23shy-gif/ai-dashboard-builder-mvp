@@ -317,7 +317,7 @@ def test_api_endpoint_batch_runs_without_google_login(client, monkeypatch):
         time.sleep(.01)
     assert result["status"] == "complete"
     assert result["count"] == 2
-    assert result["columns"] == ["source_google_account", "source_resource_id", "source_resource_name", "id", "score"]
+    assert result["columns"] == ["id", "score"]
     assert client.get(f"/jobs/{jid}/export?format=json").json()[0]["score"] == 9
 
 
@@ -335,7 +335,10 @@ def test_direct_query_requires_key_and_streams_ga4(client, monkeypatch):
     url = "/query/ga4?workspace=user1&connection_id=user1&resource=properties/1&date_from=2026-08-01&date_to=2026-08-02&fields=date,sessions"
     assert client.get(url).status_code == 401
     data = client.get(url + "&api_key=query-secret").json()
-    assert data == [{"source_google_account": "me@example.com", "source_resource_id": "properties/1", "source_resource_name": "Site", "date": "2026-08-01", "sessions": 12}]
+    assert data == [{"date": "2026-08-01", "sessions": 12}]
+
+    source_data = client.get(url.replace("fields=date,sessions", "fields=property_name,property_id,date,sessions") + "&api_key=query-secret").json()
+    assert source_data == [{"property_name": "Site", "property_id": "properties/1", "date": "2026-08-01", "sessions": 12}]
 
 
 
@@ -361,7 +364,7 @@ def test_direct_query_targets_are_self_contained(client, monkeypatch):
     from urllib.parse import quote
     url = "/query/ga4?workspace=user1&date_from=2026-08-01&date_to=2026-08-02&fields=date,sessions&filters=" + quote('{"dimensionFilter":{"filter":{"fieldName":"country"}}}') + "&targets=" + quote(targets) + "&api_key=query-secret"
     rows = client.get(url).json()
-    assert rows[0]["source_resource_name"] == "conn1" and rows[1]["source_resource_name"] == "conn2"
+    assert rows == [{"date": "2026-08-01", "sessions": 1}, {"date": "2026-08-01", "sessions": 2}]
     assert [row["sessions"] for row in rows] == [1, 2]
     assert seen == [("conn1", "properties/1", '{"dimensionFilter":{"filter":{"fieldName":"country"}}}'), ("conn2", "properties/2", '{"dimensionFilter":{"filter":{"fieldName":"country"}}}')]
 

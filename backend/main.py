@@ -377,15 +377,21 @@ async def query_rows(q):
                 raise HTTPException(403, f"Resource is not accessible: {resource_id}")
             resource_meta = discovered[resource_id]
             meta = {**CATALOG[q["product"]], **await con.fields(resource_id)}
+            if q["product"] == "ga4":
+                meta["dimensions"] = list(dict.fromkeys(list(meta["dimensions"]) + list(GA4_SOURCE_FIELDS)))
             token = read_token(q.get("workspace", ""), cid)
             source_email = token.get("email", cid) if token else cid
             dimensions, metrics = q["dimensions"], q["metrics"]
+            source_fields = [field for field in dimensions if q["product"] == "ga4" and field in GA4_SOURCE_FIELDS]
+            api_dimensions = [field for field in dimensions if field not in source_fields]
             if q.get("fields") and not (dimensions or metrics):
                 fields = q["fields"]
                 dimensions = [field for field in fields if field in meta["dimensions"]]
                 metrics = [field for field in fields if field in meta["metrics"]]
-            query = Query(product=q["product"], resource=resource_id, start=q["start"], end=q["end"], dimensions=dimensions, metrics=metrics, options=target_options, connection_id=cid)
-            if not set(query.dimensions).issubset(meta["dimensions"]) or not set(query.metrics).issubset(meta["metrics"]):
+                source_fields = [field for field in dimensions if q["product"] == "ga4" and field in GA4_SOURCE_FIELDS]
+                api_dimensions = [field for field in dimensions if field not in source_fields]
+            query = Query(product=q["product"], resource=resource_id, start=q["start"], end=q["end"], dimensions=api_dimensions, metrics=metrics, options=target_options, connection_id=cid)
+            if not set(dimensions).issubset(meta["dimensions"]) or not set(query.metrics).issubset(meta["metrics"]):
                 raise HTTPException(422, "Choose fields supported by this product.")
         else:
             con = connector_for_query("api", q.get("workspace", "local-api"), "api")
@@ -393,9 +399,13 @@ async def query_rows(q):
         async for batch in con.extract(query):
             for row in batch:
                 if q["product"] != "api":
-                    keys = ["source_google_account", "source_resource_id", "source_resource_name"] + list(row)
-                    values = [source_email, resource_id, resource_meta.get("name", resource_id)] + list(row.values())
-                    yield dict(zip(column_names(keys), values))
+                    if source_fields:
+                        row = clean_projected_row(
+                            {**row, "source_google_account": source_email, "source_resource_id": resource_id, "source_resource_name": resource_meta.get("name", resource_id)},
+                            source_fields + list(row),
+                            source_fields,
+                        )
+                    yield row
                 else:
                     yield row
 
@@ -618,17 +628,9 @@ async def windsor_googleanalytics4(request: Request, format: str = "json"):
         if params.get(key):
             options[key] = params[key]
     start, end = apply_exclude_recent_days(params.get("date_from") or params.get("start"), params.get("date_to") or params.get("end"), params)
-    spec = {"product": "ga4", "workspace": workspace, "connection_id": params.get("connection_id", ""), "resources": [t["resource"] for t in targets], "targets": targets, "start": start, "end": end, "fields": [], "dimensions": dimensions, "metrics": metrics, "options": options}
+    spec = {"product": "ga4", "workspace": workspace, "connection_id": params.get("connection_id", ""), "resources": [t["resource"] for t in targets], "targets": targets, "start": start, "end": end, "fields": [], "dimensions": output_source_fields + dimensions, "metrics": metrics, "options": options}
     rows = []
     async for row in query_rows(spec):
-        if output_source_fields:
-            row = {**row}
-            if "account_name" in output_source_fields:
-                row.setdefault("account_name", row.get("source_google_account"))
-            if "property_id" in output_source_fields:
-                row.setdefault("property_id", row.get("source_resource_id"))
-            if "property_name" in output_source_fields:
-                row.setdefault("property_name", row.get("source_resource_name"))
         wanted = [f for f in fields if f not in plan["ignored_fields"]]
         rows.append(clean_projected_row(row, wanted, output_source_fields, output_aliases))
     if format == "csv":
@@ -678,7 +680,7 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         ga4_wanted_fields = fields_param or dimensions_param + metrics_param
         ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, params.get("ui_report") or params.get("report") or "")
         fields_param = []
-        dimensions_param = ga4_plan["dimensions"]
+        dimensions_param = ga4_plan["output_source_fields"] + ga4_plan["dimensions"]
         metrics_param = ga4_plan["metrics"]
     spec = {
         "product": product,
@@ -754,7 +756,10 @@ async def fields(product: str, resource: str, request: Request, connection_id: s
         return {"dimensions": columns, "metrics": numeric, "sampleRows": len(sample)}
     if resource not in {r["id"] for r in await con.discover()}:
         raise HTTPException(403, "Select an accessible resource.")
-    return await con.fields(resource)
+    data = await con.fields(resource)
+    if product == "ga4":
+        data["dimensions"] = list(dict.fromkeys(["account_name", "property_id", "property_name"] + data.get("dimensions", [])))
+    return data
 
 
 class Query(BaseModel):
@@ -812,6 +817,8 @@ async def validate_query(q, request, discovery_cache=None, connector_cache=None)
         meta = {**CATALOG[q.product], "dimensions": inferred, "metrics": inferred}
     else:
         meta = {**CATALOG[q.product], **await con.fields(q.resource)}
+        if q.product == "ga4":
+            meta["dimensions"] = list(dict.fromkeys(["account_name", "property_id", "property_name"] + list(meta["dimensions"])))
     if len(set(q.dimensions)) != len(q.dimensions) or len(set(q.metrics)) != len(q.metrics):
         raise HTTPException(422, "Duplicate fields are not allowed.")
     if not set(q.dimensions).issubset(meta["dimensions"]) or not set(q.metrics).issubset(meta["metrics"]):
@@ -884,7 +891,10 @@ async def batch_extract(q: BatchQuery, request: Request):
             if c.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running')").fetchone():
                 raise HTTPException(409, "An extraction is already running. Wait for it to finish.")
             jid = ("api_" if q.product == "api" else "") + secrets.token_hex(16)
-            columns = column_names(["source_google_account", "source_resource_id", "source_resource_name"] + q.dimensions + q.metrics)
+            internal_columns = list(q.dimensions + q.metrics)
+            if len(q.targets) > 1 and q.product != "api" and "property_id" not in internal_columns:
+                internal_columns = ["property_id"] + internal_columns
+            columns = column_names(q.dimensions + q.metrics)
             c.execute("INSERT INTO jobs(id,owner,status,spec,columns) VALUES (?,?,'queued',?,?)", (jid, uid, q.model_dump_json(), json.dumps(columns)))
             for index, (source_query, con, name, email) in enumerate(prepared):
                 state = "queued"
@@ -895,7 +905,7 @@ async def batch_extract(q: BatchQuery, request: Request):
                         if source_query.start > source_query.end:
                             state = "skipped"
                 c.execute("INSERT INTO job_sources(job,position,connection_id,email,resource,name,start_date,end_date,status) VALUES (?,?,?,?,?,?,?,?,?)", (jid, index, source_query.connection_id, email, source_query.resource, name, source_query.start, source_query.end, state))
-        task = asyncio.create_task(run_batch(jid, uid, prepared, columns))
+        task = asyncio.create_task(run_batch(jid, uid, prepared, columns, internal_columns))
         tasks.add(task)
         task.add_done_callback(tasks.discard)
     return {"id": jid}
@@ -905,7 +915,8 @@ def failure_message(exc):
     return str(exc.detail) if isinstance(exc, HTTPException) else str(exc) if isinstance(exc, ValueError) else "Extraction failed unexpectedly. Retry this source."
 
 
-async def run_batch(jid, uid, prepared, columns):
+async def run_batch(jid, uid, prepared, columns, internal_columns=None):
+    internal_columns = internal_columns or columns
     try:
         with db() as c:
             c.execute("UPDATE jobs SET status='running' WHERE id=?", (jid,))
@@ -918,11 +929,15 @@ async def run_batch(jid, uid, prepared, columns):
                 async for batch in con.extract(q):
                     tagged = []
                     for row in batch:
-                        # Allocate provenance columns first; colliding user headers get a suffix.
-                        keys = ["source_google_account", "source_resource_id", "source_resource_name"] + list(row)
-                        values = [email, q.resource, name] + list(row.values())
-                        tagged.append(dict(zip(column_names(keys), values)))
-                    columns = insert_rows(jid, tagged, columns, source=index, union=True)
+                        if q.product == "api":
+                            tagged.append(row)
+                        else:
+                            source_values = {"account_name": email, "property_id": q.resource, "property_name": name, "source_google_account": email, "source_resource_id": q.resource, "source_resource_name": name}
+                            tagged.append(clean_projected_row({**row, **source_values}, internal_columns, internal_columns))
+                    stored_columns = insert_rows(jid, tagged, internal_columns if q.product != "api" else columns, source=index, union=True)
+                    with db() as c:
+                        display_columns = stored_columns if q.product == "api" and not columns else columns
+                        c.execute("UPDATE jobs SET columns=? WHERE id=?", (json.dumps(display_columns), jid))
                     await asyncio.sleep(0)
                 with db() as c:
                     c.execute("UPDATE job_sources SET status='complete' WHERE job=? AND position=?", (jid, index))
