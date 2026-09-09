@@ -8,7 +8,8 @@ import { DataInsights } from '@/components/dashboard/DataInsights';
 import { DataModelView } from '@/components/dashboard/DataModelView';
 import { DashboardRenderer } from '@/components/dashboard/DashboardRenderer';
 import { Filters } from '@/components/dashboard/Filters';
-import { marketingData, type MarketingRow } from '@/lib/data/mockData';
+import type { MarketingRow } from '@/lib/data/mockData';
+import type { DashboardDataContext } from '@/lib/data/importData';
 import {
   filterMarketingData,
   groupByBrand,
@@ -29,6 +30,7 @@ const defaultFilters: DashboardFilters = {
 
 type DashboardCanvasProps = {
   dashboardConfig: DashboardConfig;
+  dataContext?: DashboardDataContext;
   renderVersion: number;
   rows: MarketingRow[];
   sourceLabel: string;
@@ -39,6 +41,7 @@ type DashboardCanvasProps = {
 
 export function DashboardCanvas({
   dashboardConfig,
+  dataContext,
   renderVersion,
   rows,
   sourceLabel,
@@ -54,7 +57,8 @@ export function DashboardCanvas({
     setFilters(defaultFilters);
   }, [renderVersion]);
 
-  const activeRows = rows.length ? rows : marketingData;
+  const activeRows = rows;
+  const hasConnectedData = activeRows.length > 0;
   const brandOptions = useMemo(() => topDimensionValues(activeRows, 'brand', 100), [activeRows]);
   const channelOptions = useMemo(() => topDimensionValues(activeRows, 'channel', 100), [activeRows]);
   const filteredRows = useMemo(() => filterMarketingData(activeRows, filters), [activeRows, filters]);
@@ -83,7 +87,7 @@ export function DashboardCanvas({
               >
                 Data model
               </Button>
-              <Badge>{filteredRows.length.toLocaleString('en-GB')} rows</Badge>
+            <Badge>{hasConnectedData ? `${filteredRows.length.toLocaleString('en-GB')} rows` : 'No data'}</Badge>
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">{dashboardConfig.title}</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
@@ -106,27 +110,35 @@ export function DashboardCanvas({
       <div className="grid gap-5 p-6">
         {activeView === 'report' ? (
           <>
-            <Filters brands={brandOptions} channels={channelOptions} filters={filters} onChange={setFilters} />
-            <DataInsights
-              dimensionCount={brandOptions.length + channelOptions.length}
-              recordCount={filteredRows.length}
-              summary={summary}
-            />
-            <DashboardRenderer
-              config={dashboardConfig}
-              data={{
-                summary,
-                monthly: monthlyData,
-                channel: channelData,
-                brand: brandData,
-              }}
-              onChangeChartType={onChangeChartType}
-              onDeleteComponent={onDeleteComponent}
-              onUpdateComponent={onUpdateComponent}
-            />
+            {hasConnectedData && <Filters brands={brandOptions} channels={channelOptions} filters={filters} onChange={setFilters} />}
+            {hasConnectedData && (
+              <DataInsights
+                dimensionCount={brandOptions.length + channelOptions.length}
+                recordCount={filteredRows.length}
+                summary={summary}
+              />
+            )}
+            {hasConnectedData && dashboardConfig.components.length ? (
+              <DashboardRenderer
+                config={dashboardConfig}
+                data={{
+                  summary,
+                  monthly: monthlyData,
+                  channel: channelData,
+                  brand: brandData,
+                }}
+                onChangeChartType={onChangeChartType}
+                onDeleteComponent={onDeleteComponent}
+                onUpdateComponent={onUpdateComponent}
+              />
+            ) : (
+              <div className="flex min-h-[420px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-muted-foreground">
+                {hasConnectedData ? 'Use the AI Copilot to generate dashboard components.' : 'Connect CSV, Excel, database or API data to start.'}
+              </div>
+            )}
           </>
         ) : (
-          <DataModelView rows={activeRows} sourceLabel={sourceLabel} />
+          <DataModelView dataContext={dataContext} rows={activeRows} sourceLabel={sourceLabel} />
         )}
       </div>
     </section>

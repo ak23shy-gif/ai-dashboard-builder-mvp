@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildDashboardSystemPrompt, buildDashboardUserPrompt, dashboardJsonSchema } from '@/lib/ai/dashboardPrompt';
-import { validateDashboardConfig } from '@/lib/ai/dashboardSchema';
+import { blankDashboardConfig, validateDashboardConfig } from '@/lib/ai/dashboardSchema';
 import { generateLocalDashboard } from '@/lib/ai/demoDashboardGenerator';
 import type { DashboardDataContext } from '@/lib/data/importData';
 import type { DashboardConfig } from '@/types/dashboard';
@@ -319,6 +319,14 @@ export async function POST(request: Request) {
 
   if (!prompt) {
     return NextResponse.json({ error: 'Please enter a dashboard prompt.' }, { status: 400 });
+  }
+
+  if (!body.dataContext) {
+    return NextResponse.json({
+      dashboard: validateDashboardConfig(blankDashboardConfig),
+      source: 'local',
+      warning: 'No data source is connected. Connect CSV, Excel, database or API data before generating a dashboard.',
+    });
   }
 
   const provider = preferredProvider();

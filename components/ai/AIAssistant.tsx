@@ -33,6 +33,7 @@ const examples = [
 type AIAssistantProps = {
   dataContext?: DashboardDataContext;
   currentDashboard: DashboardConfig;
+  hasConnectedData: boolean;
   onDataImported: (dataset: ImportedDataset) => void;
   onDashboardGenerated: (dashboard: DashboardConfig) => void;
   onResetDashboard: () => void;
@@ -77,6 +78,7 @@ async function readDashboardApiResult(response: Response): Promise<DashboardApiR
 export function AIAssistant({
   dataContext,
   currentDashboard,
+  hasConnectedData,
   onDataImported,
   onDashboardGenerated,
   onResetDashboard,
@@ -89,6 +91,12 @@ export function AIAssistant({
     if (!prompt.trim()) {
       setStatus('error');
       setMessage('Please enter a dashboard prompt first.');
+      return;
+    }
+
+    if (!hasConnectedData || !dataContext) {
+      setStatus('error');
+      setMessage('Connect CSV, Excel, database or API data first. DashForge will not invent fields or insights without data.');
       return;
     }
 
@@ -165,8 +173,8 @@ export function AIAssistant({
             value={prompt}
           />
           <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">Uses Gemini/OpenAI when configured, with a local planner fallback.</p>
-            <Button disabled={status === 'loading'} onClick={handleGenerate}>
+            <p className="text-xs text-muted-foreground">Uses only connected dataset fields. No data means no generated assumptions.</p>
+            <Button disabled={status === 'loading' || !hasConnectedData} onClick={handleGenerate}>
               {status === 'loading' ? 'Sending' : 'Generate'}
               {status === 'loading' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -176,7 +184,7 @@ export function AIAssistant({
             </Button>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button disabled={status === 'loading' || !prompt.trim()} onClick={handleGenerate} variant="outline">
+            <Button disabled={status === 'loading' || !prompt.trim() || !hasConnectedData} onClick={handleGenerate} variant="outline">
               <Wand2 className="h-4 w-4" />
               Regenerate
             </Button>

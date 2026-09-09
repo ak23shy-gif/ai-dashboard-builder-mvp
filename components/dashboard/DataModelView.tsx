@@ -5,11 +5,13 @@ import { Columns3, Database, Hash, MoveHorizontal, Rows3, Table2 } from 'lucide-
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDashboardValue } from '@/lib/data/dataProcessor';
+import type { DashboardDataContext } from '@/lib/data/importData';
 import type { MarketingRow } from '@/lib/data/mockData';
 
 type DataModelViewProps = {
   rows: MarketingRow[];
   sourceLabel: string;
+  dataContext?: DashboardDataContext;
 };
 
 const modelColumns: Array<{ key: keyof MarketingRow; label: string }> = [
@@ -44,19 +46,40 @@ function distinctCount(rows: MarketingRow[], key: keyof MarketingRow) {
   return new Set(rows.map((row) => String(row[key] ?? ''))).size;
 }
 
-export function DataModelView({ rows, sourceLabel }: DataModelViewProps) {
+function labelForSlot(dataContext: DashboardDataContext | undefined, slot: string, fallback: string) {
+  const sourceColumn =
+    slot === 'date'
+      ? dataContext?.dimensionSlots.date
+      : slot === 'brand'
+        ? dataContext?.dimensionSlots.primary
+        : slot === 'channel'
+          ? dataContext?.dimensionSlots.secondary
+          : dataContext?.metricSlots[slot as keyof DashboardDataContext['metricSlots']];
+
+  return dataContext?.fields.find((field) => field.name === sourceColumn)?.label || fallback;
+}
+
+export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
   const [previewCount, setPreviewCount] = useState(250);
+  const displayColumns = useMemo(
+    () =>
+      modelColumns.map((column) => ({
+        ...column,
+        label: labelForSlot(dataContext, column.key, column.label),
+      })),
+    [dataContext],
+  );
   const previewRows = rows.slice(0, previewCount);
-  const tableMinWidth = modelColumns.length * 165;
+  const tableMinWidth = displayColumns.length * 165;
   const fieldProfiles = useMemo(() => {
-    return modelColumns.reduce<Record<string, { distinct: number; missing: number }>>((profiles, column) => {
+    return displayColumns.reduce<Record<string, { distinct: number; missing: number }>>((profiles, column) => {
       profiles[column.key] = {
         distinct: distinctCount(rows, column.key),
         missing: missingCount(rows, column.key),
       };
       return profiles;
     }, {});
-  }, [rows]);
+  }, [displayColumns, rows]);
 
   return (
     <div className="grid gap-5">
@@ -83,7 +106,7 @@ export function DataModelView({ rows, sourceLabel }: DataModelViewProps) {
           <CardContent className="flex items-center justify-between gap-3 p-5">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-500">Fields</p>
-              <p className="mt-1 text-sm font-semibold text-slate-950">{modelColumns.length}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">{displayColumns.length}</p>
             </div>
             <Columns3 className="h-5 w-5 text-primary" />
           </CardContent>
@@ -100,7 +123,7 @@ export function DataModelView({ rows, sourceLabel }: DataModelViewProps) {
         </CardHeader>
         <CardContent>
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {modelColumns.map((column) => (
+            {displayColumns.map((column) => (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3" key={column.key}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-semibold text-slate-900">{column.label}</p>
@@ -153,7 +176,7 @@ export function DataModelView({ rows, sourceLabel }: DataModelViewProps) {
               <table className="w-full text-sm" style={{ minWidth: tableMinWidth }}>
                 <thead className="sticky top-0 bg-slate-50">
                   <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-                    {modelColumns.map((column) => (
+                    {displayColumns.map((column) => (
                       <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key}>
                         {column.label}
                       </th>
@@ -163,7 +186,7 @@ export function DataModelView({ rows, sourceLabel }: DataModelViewProps) {
                 <tbody>
                   {previewRows.map((row, index) => (
                     <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={`${row.date}-${row.brand}-${row.channel}-${index}`}>
-                      {modelColumns.map((column) => (
+                      {displayColumns.map((column) => (
                         <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key}>
                           {formatDashboardValue(row[column.key], `${column.key} ${column.label}`)}
                         </td>

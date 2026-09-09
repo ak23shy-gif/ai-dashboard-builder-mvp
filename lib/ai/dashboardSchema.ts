@@ -1,5 +1,13 @@
 import type { DashboardConfig } from '@/types/dashboard';
 
+export const blankDashboardConfig: DashboardConfig = {
+  id: 'blank-dashboard',
+  title: 'Untitled Dashboard',
+  description: 'Connect a data source to start building a dashboard.',
+  filters: [],
+  components: [],
+};
+
 export const defaultDashboardConfig: DashboardConfig = {
   id: 'performance-overview',
   title: 'Performance Overview',
@@ -111,6 +119,7 @@ const allowedComponentTypes = new Set([
   'gauge',
   'funnel',
   'heatmap',
+  'text_box',
   'data_table',
 ]);
 
@@ -173,6 +182,10 @@ function sanitizeComponent(component: any) {
     return component.dataSource === 'monthly' && metrics.length ? { ...component, metrics } : null;
   }
 
+  if (component.type === 'text_box') {
+    return typeof component.content === 'string' ? component : null;
+  }
+
   if (component.type === 'funnel') {
     const stages = Array.isArray(component.stages)
       ? component.stages.filter((stage: any) => additiveMetrics.has(stage?.metric))
@@ -194,19 +207,19 @@ function sanitizeComponent(component: any) {
 
 export function validateDashboardConfig(value: unknown): DashboardConfig {
   if (!value || typeof value !== 'object') {
-    return defaultDashboardConfig;
+    return blankDashboardConfig;
   }
 
   const candidate = value as Partial<DashboardConfig>;
   const components = Array.isArray(candidate.components)
     ? candidate.components.map(sanitizeComponent).filter(Boolean)
-    : defaultDashboardConfig.components;
+    : blankDashboardConfig.components;
 
   return {
-    id: candidate.id || defaultDashboardConfig.id,
-    title: candidate.title || defaultDashboardConfig.title,
-    description: candidate.description || defaultDashboardConfig.description,
-    filters: candidate.filters || defaultDashboardConfig.filters,
-    components: components.length ? components : defaultDashboardConfig.components,
+    id: candidate.id || blankDashboardConfig.id,
+    title: candidate.title || blankDashboardConfig.title,
+    description: candidate.description || blankDashboardConfig.description,
+    filters: candidate.filters || blankDashboardConfig.filters,
+    components,
   };
 }

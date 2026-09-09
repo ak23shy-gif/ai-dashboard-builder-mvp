@@ -7,6 +7,7 @@ import type {
   DataTableComponentConfig,
   KpiComponentConfig,
   PieChartComponentConfig,
+  TextBoxComponentConfig,
 } from '@/types/dashboard';
 
 const channelFilter = { id: 'channel_filter', type: 'select_filter' as const, field: 'channel' as const, title: 'Channel' };
@@ -120,6 +121,17 @@ function makeTable(dimension: 'channel' | 'brand'): DataTableComponentConfig {
       { key: 'sessions', label: 'Sessions' },
       { key: 'bookings', label: 'Bookings' },
     ],
+  };
+}
+
+function makeInsightsTextBox(): TextBoxComponentConfig {
+  return {
+    id: 'insights_overview',
+    type: 'text_box',
+    title: 'Insights Overview',
+    content:
+      'This overview is based on the connected dataset. Review the headline measures first, then use the trend and breakdown visuals to understand what is driving the result.',
+    layout: { className: 'xl:col-span-2' },
   };
 }
 
@@ -434,6 +446,14 @@ export function generateDemoDashboard(prompt: string, currentDashboard?: Dashboa
 
   if (normalizedPrompt.includes('reset')) {
     return validateDashboardConfig(defaultDashboardConfig);
+  }
+
+  if (normalizedPrompt.includes('text') || normalizedPrompt.includes('insight') || normalizedPrompt.includes('overview')) {
+    return validateDashboardConfig({
+      ...dashboard,
+      description: 'Updated by the local dashboard planner: added a dataset-aware insights overview text box.',
+      components: dedupeComponents([makeInsightsTextBox(), ...dashboard.components]),
+    });
   }
 
   if (normalizedPrompt.includes('focus') && (normalizedPrompt.includes('session') || normalizedPrompt.includes('website'))) {

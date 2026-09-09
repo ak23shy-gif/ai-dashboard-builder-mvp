@@ -11,6 +11,7 @@ import { HorizontalBarChartCard } from '@/components/dashboard/HorizontalBarChar
 import { KpiCard } from '@/components/dashboard/KpiCard';
 import { LineChartCard } from '@/components/dashboard/LineChartCard';
 import { PieChartCard } from '@/components/dashboard/PieChartCard';
+import { TextBoxCard } from '@/components/dashboard/TextBoxCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ import type {
   KpiComponentConfig,
   LineChartComponentConfig,
   PieChartComponentConfig,
+  TextBoxComponentConfig,
 } from '@/types/dashboard';
 
 type DashboardRendererProps = {
@@ -96,7 +98,7 @@ function formatTableRows(rows: Array<Record<string, string | number>>, columns: 
 }
 
 function defaultVisualLayout(type: string) {
-  if (['data_table', 'area_chart', 'heatmap'].includes(type)) {
+  if (['data_table', 'area_chart', 'heatmap', 'text_box'].includes(type)) {
     return 'xl:col-span-2';
   }
 
@@ -216,6 +218,10 @@ function renderHeatmap(component: HeatmapComponentConfig, data: DashboardRendere
   );
 }
 
+function renderTextBox(component: TextBoxComponentConfig) {
+  return <TextBoxCard content={component.content} title={component.title} />;
+}
+
 function UnsupportedComponent({ title }: { title: string }) {
   return (
     <Card className="shadow-none">
@@ -311,6 +317,7 @@ export function DashboardRenderer({
             {component.type === 'gauge' && renderGauge(component, summary)}
             {component.type === 'funnel' && renderFunnel(component, summary)}
             {component.type === 'heatmap' && renderHeatmap(component, data, config)}
+            {component.type === 'text_box' && renderTextBox(component)}
             {component.type === 'data_table' && renderDataTable(component, data)}
             {![
               'line_chart',
@@ -321,6 +328,7 @@ export function DashboardRenderer({
               'gauge',
               'funnel',
               'heatmap',
+              'text_box',
               'data_table',
             ].includes(component.type) && (
               <UnsupportedComponent title={component.title} />

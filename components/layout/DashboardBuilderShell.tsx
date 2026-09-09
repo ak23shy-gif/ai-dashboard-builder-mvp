@@ -5,8 +5,8 @@ import { AIAssistant } from '@/components/ai/AIAssistant';
 import { DashboardCanvas } from '@/components/dashboard/DashboardCanvas';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { createDashboardFromImportedDataset } from '@/lib/ai/autoDashboard';
-import { defaultDashboardConfig, validateDashboardConfig } from '@/lib/ai/dashboardSchema';
-import { marketingData, type MarketingRow } from '@/lib/data/mockData';
+import { blankDashboardConfig, validateDashboardConfig } from '@/lib/ai/dashboardSchema';
+import type { MarketingRow } from '@/lib/data/mockData';
 import type { DashboardDataContext } from '@/lib/data/importData';
 import type { DashboardComponentConfig, DashboardConfig } from '@/types/dashboard';
 
@@ -17,56 +17,29 @@ type SavedDashboard = {
   dashboard: DashboardConfig;
 };
 
-const storageKey = 'dashforge-ai-dashboards';
+const storageKey = 'dashforge-ai-dashboards-v2';
 const themeStorageKey = 'dashforge-ai-theme';
 type AppTheme = 'light' | 'dark' | 'midnight';
 
 function createInitialDashboards(): SavedDashboard[] {
-  const defaultDashboard = validateDashboardConfig(defaultDashboardConfig);
+  const blankDashboard = validateDashboardConfig(blankDashboardConfig);
 
-  return [
-    { id: defaultDashboard.id, name: defaultDashboard.title, status: 'Saved', dashboard: defaultDashboard },
-    {
-      id: 'completion-overview',
-      name: 'Completion Overview',
-      status: 'Saved',
-      dashboard: validateDashboardConfig({
-        ...defaultDashboard,
-        id: 'completion-overview',
-        title: 'Completion Overview',
-        description: 'Saved dashboard focused on completion activity and conversion rate.',
-        components: defaultDashboard.components.filter((component) =>
-          ['kpi_total_leads', 'kpi_bookings', 'kpi_conversion_rate', 'monthly_performance', 'channel_share'].includes(component.id),
-        ),
-      }),
-    },
-    {
-      id: 'activity-overview',
-      name: 'Activity Overview',
-      status: 'Saved',
-      dashboard: validateDashboardConfig({
-        ...defaultDashboard,
-        id: 'activity-overview',
-        title: 'Activity Overview',
-        description: 'Saved dashboard focused on activity volume and trend performance.',
-      }),
-    },
-  ];
+  return [{ id: blankDashboard.id, name: blankDashboard.title, status: 'Blank', dashboard: blankDashboard }];
 }
 
 export function DashboardBuilderShell() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [dashboards, setDashboards] = useState<SavedDashboard[]>(createInitialDashboards);
-  const [activeDashboardId, setActiveDashboardId] = useState(() => validateDashboardConfig(defaultDashboardConfig).id);
+  const [activeDashboardId, setActiveDashboardId] = useState(() => validateDashboardConfig(blankDashboardConfig).id);
   const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
-  const [dataRows, setDataRows] = useState<MarketingRow[]>(marketingData);
-  const [sourceLabel, setSourceLabel] = useState('Sample data');
+  const [dataRows, setDataRows] = useState<MarketingRow[]>([]);
+  const [sourceLabel, setSourceLabel] = useState('No data connected');
   const [dataContext, setDataContext] = useState<DashboardDataContext | undefined>();
   const [activeTheme, setActiveTheme] = useState<AppTheme>('light');
   const [dashboardRenderVersion, setDashboardRenderVersion] = useState(0);
 
   const dashboardConfig = useMemo(
-    () => dashboards.find((dashboard) => dashboard.id === activeDashboardId)?.dashboard || validateDashboardConfig(defaultDashboardConfig),
+    () => dashboards.find((dashboard) => dashboard.id === activeDashboardId)?.dashboard || validateDashboardConfig(blankDashboardConfig),
     [activeDashboardId, dashboards],
   );
 
@@ -133,10 +106,10 @@ export function DashboardBuilderShell() {
   function handleAddDashboard() {
     const id = `dashboard-${Date.now()}`;
     const dashboard = validateDashboardConfig({
-      ...defaultDashboardConfig,
+      ...blankDashboardConfig,
       id,
       title: 'New Dashboard',
-      description: 'Draft dashboard ready for AI generation or manual editing.',
+      description: 'Connect a data source before generating dashboard visuals.',
     });
 
     setDashboards((currentDashboards) => [
@@ -229,6 +202,7 @@ export function DashboardBuilderShell() {
           onToggle={() => setIsSidebarCollapsed((current) => !current)}
         />
         <DashboardCanvas
+          dataContext={dataContext}
           dashboardConfig={dashboardConfig}
           renderVersion={dashboardRenderVersion}
           rows={dataRows}
@@ -240,6 +214,7 @@ export function DashboardBuilderShell() {
         <AIAssistant
           dataContext={dataContext}
           currentDashboard={dashboardConfig}
+          hasConnectedData={Boolean(dataContext && dataRows.length)}
           onDataImported={(dataset) => {
             const generatedDashboard = createDashboardFromImportedDataset(dataset);
             setDataRows(dataset.rows);
@@ -248,7 +223,7 @@ export function DashboardBuilderShell() {
             saveDashboard(generatedDashboard);
           }}
           onDashboardGenerated={(nextDashboard) => saveDashboard(nextDashboard)}
-          onResetDashboard={() => saveDashboard(validateDashboardConfig(defaultDashboardConfig))}
+          onResetDashboard={() => saveDashboard(validateDashboardConfig(blankDashboardConfig), 'Blank')}
         />
       </div>
     </main>

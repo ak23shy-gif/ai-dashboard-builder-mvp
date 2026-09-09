@@ -8,6 +8,7 @@ export type DashboardComponentType =
   | 'gauge'
   | 'funnel'
   | 'heatmap'
+  | 'text_box'
   | 'data_table'
   | 'date_filter'
   | 'select_filter';
@@ -36,6 +37,7 @@ export type DashboardComponentConfig =
   | GaugeComponentConfig
   | FunnelComponentConfig
   | HeatmapComponentConfig
+  | TextBoxComponentConfig
   | DataTableComponentConfig;
 
 export interface BaseDashboardComponentConfig {
@@ -120,6 +122,11 @@ export interface HeatmapComponentConfig extends BaseDashboardComponentConfig {
   type: 'heatmap';
   dataSource: 'monthly';
   metrics: Array<Exclude<DashboardMetric, 'conversionRate'>>;
+}
+
+export interface TextBoxComponentConfig extends BaseDashboardComponentConfig {
+  type: 'text_box';
+  content: string;
 }
 
 export interface DataTableComponentConfig extends BaseDashboardComponentConfig {
