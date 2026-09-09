@@ -13,12 +13,18 @@ class PostgresCursor:
     def __init__(self, cursor):
         self.cursor = cursor
 
+    def _sql(self, sql):
+        sql = sql.replace("INSERT OR IGNORE INTO rows(job,data,source) VALUES (?,?,?)", "INSERT INTO rows(job,data,source) VALUES (?,?,?) ON CONFLICT DO NOTHING")
+        sql = sql.replace("INSERT OR IGNORE INTO secrets VALUES (?,?)", "INSERT INTO secrets(id,value) VALUES (?,?) ON CONFLICT DO NOTHING")
+        sql = sql.replace("INSERT OR REPLACE INTO secrets VALUES (?,?)", "INSERT INTO secrets(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value")
+        return sql.replace("?", "%s")
+
     def execute(self, sql, params=()):
-        self.cursor.execute(sql.replace("?", "%s"), params)
+        self.cursor.execute(self._sql(sql), params)
         return self
 
     def executemany(self, sql, seq):
-        self.cursor.executemany(sql.replace("?", "%s"), seq)
+        self.cursor.executemany(self._sql(sql), seq)
         return self
 
     def fetchone(self):
@@ -78,10 +84,11 @@ def using_postgres():
 
 
 def normalize_database_url(url):
-    if url.startswith("postgresql://"):
-        return url
     if url.startswith("postgres://"):
-        return "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://") and "sslmode=" not in url:
+        separator = "&" if "?" in url else "?"
+        return url + separator + "sslmode=require"
     return url
 
 
@@ -182,7 +189,7 @@ def export_rows(job, columns, fmt):
             yield "["
             first = True
             for row in cur:
-                data = json.loads(row[0])
+                data = json.loads(row["data"] if isinstance(row, dict) else row[0])
                 yield ("" if first else ",") + json.dumps({k: data.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
                 first = False
             yield "]"
@@ -194,7 +201,8 @@ def export_rows(job, columns, fmt):
             for row in cur:
                 buf.seek(0)
                 buf.truncate(0)
-                writer.writerow([json.loads(row[0]).get(k) for k in columns])
+                raw = row["data"] if isinstance(row, dict) else row[0]
+                writer.writerow([json.loads(raw).get(k) for k in columns])
                 yield buf.getvalue()
     finally:
         conn.close()
