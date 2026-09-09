@@ -6,9 +6,9 @@ import type { DashboardDataContext } from '@/lib/data/importData';
 import type { DashboardConfig } from '@/types/dashboard';
 
 export const runtime = 'nodejs';
-export const maxDuration = 10;
+export const maxDuration = 30;
 
-const providerTimeoutMs = 6500;
+const providerTimeoutMs = 22000;
 
 type DashboardApiRequest = {
   prompt?: string;
@@ -133,6 +133,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
           strict: false,
         },
       },
+      max_output_tokens: 1800,
     }),
   }).finally(() => clearTimeout(timeout));
 
@@ -193,6 +194,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.2,
+          maxOutputTokens: 1800,
         },
       }),
     },
@@ -261,9 +263,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Please enter a dashboard prompt.' }, { status: 400 });
   }
 
-  try {
-    const provider = preferredProvider();
+  const provider = preferredProvider();
 
+  try {
     if (provider === 'gemini') {
       if (!process.env.GEMINI_API_KEY) {
         return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because GEMINI_API_KEY is missing.');
@@ -280,12 +282,16 @@ export async function POST(request: Request) {
 
     return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because no cloud AI provider key is configured.');
   } catch (error) {
+    const aborted = error instanceof Error && error.name === 'AbortError';
+
     return localPlannerResponse(
       prompt,
       body.currentDashboard,
-      `Local planner used because generation failed: ${
-        error instanceof Error ? error.message : 'unexpected dashboard generation error'
-      }`,
+      aborted
+        ? `Local planner used because ${provider} did not respond within ${Math.round(providerTimeoutMs / 1000)} seconds.`
+        : `Local planner used because generation failed: ${
+            error instanceof Error ? error.message : 'unexpected dashboard generation error'
+          }`,
     );
   }
 }
