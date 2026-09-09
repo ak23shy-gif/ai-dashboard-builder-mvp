@@ -196,21 +196,21 @@ function outlierPlan(dataContext: DashboardDataContext) {
 
 function layoutPlan(dataContext: DashboardDataContext) {
   const metrics = availableMetrics(dataContext);
-  const steps = ['1. Insights Overview: source, grain, field mapping, KPI formulas and chart reasoning.'];
+  const steps = ['1. Header banner: global slicers, source status, row count and refresh context.'];
 
   if (metrics.length) {
-    steps.push(`2. KPI strip: ${metrics.slice(0, 4).map((metric) => metricLabel(dataContext, metric)).join(', ')}.`);
+    steps.push(`2. Row 1 executive summary: ${metrics.slice(0, 4).map((metric) => metricLabel(dataContext, metric)).join(', ')} KPI cards.`);
   }
 
   if (dataContext.dimensionSlots.date) {
-    steps.push('3. Trend section: period movement before category drill-down.');
+    steps.push('3. Row 2 primary drivers: period trend with prior-period comparison logic.');
   }
 
   if (dataContext.dimensionSlots.primary || dataContext.dimensionSlots.secondary) {
-    steps.push('4. Driver section: ranked category comparisons sorted by value.');
+    steps.push('4. Row 2/3 primary drivers: ranked category comparisons sorted by value.');
   }
 
-  steps.push('5. Detail section: table for lookup, QA and follow-up.');
+  steps.push('5. Row 3 deep-dive: detail table for lookup, QA and follow-up.');
 
   return steps.join('\n');
 }
@@ -223,28 +223,29 @@ function textBox(dataContext: DashboardDataContext, prompt: string): TextBoxComp
   return {
     id: 'insights_overview',
     type: 'text_box',
-    title: 'Insights Overview',
+    title: 'Dashboard Architecture Plan',
     content: [
+      'Phase 1: Business Objective & KPIs',
+      `Objective: ${businessQuestion}`,
       `Domain/source: ${inferDomain(dataContext)} from ${dataContext.sourceName} (${dataContext.sourceType.toUpperCase()}).`,
+      `Audience: ${audience}`,
+      `Top-line KPI cards:\n${kpiDefinitions(dataContext)}`,
       '',
-      `Columns/fields:\n${fieldList(dataContext)}`,
-      '',
+      'Phase 2: Data Model & Metric Logic',
+      `Data dictionary & scoping:\n${fieldList(dataContext)}`,
       `Grain: ${dataContext.grain || 'one source row or event record'}.`,
       `Time range & frequency: ${dataContext.timeRange?.label || 'not detected'}; ${dataContext.timeRange?.frequency || 'not detected'}.`,
-      `Business question: ${businessQuestion}`,
-      `Audience: ${audience}`,
+      `Filter controls:\n${filterPlan(dataContext)}`,
       '',
-      `KPIs that matter most:\n${kpiDefinitions(dataContext)}`,
+      'Phase 3: Visual Hierarchy & Page Layout',
+      layoutPlan(dataContext),
       '',
-      `Meaningful comparisons:\n${comparisonPlan(dataContext)}`,
+      'Phase 4: Automated Analytical Insights',
+      `Dynamic comparisons:\n${comparisonPlan(dataContext)}`,
+      `Anomaly logic: ${outlierPlan(dataContext)}`,
       '',
-      `Chart choices and why:\n${visualRationale(dataContext)}`,
-      '',
-      `Filters/slicers:\n${filterPlan(dataContext)}`,
-      '',
-      `Outlier / so-what callout: ${outlierPlan(dataContext)}`,
-      '',
-      `Suggested layout / reading order:\n${layoutPlan(dataContext)}`,
+      'Phase 5: Visual QA & Misuse Prevention',
+      visualRationale(dataContext),
     ].join('\n'),
     layout: { className: 'xl:col-span-2' },
   };
@@ -293,6 +294,24 @@ function componentIds(components: DashboardComponentConfig[]) {
   });
 }
 
+function dashboardDescription(prompt: string, dataContext: DashboardDataContext) {
+  const metrics = availableMetrics(dataContext).map((metric) => metricLabel(dataContext, metric)).slice(0, 4);
+  const filters = [
+    dataContext.dimensionSlots.primary ? dimensionLabel(dataContext, 'brand') : null,
+    dataContext.dimensionSlots.secondary ? dimensionLabel(dataContext, 'channel') : null,
+    dataContext.dimensionSlots.date ? fieldLabel(dataContext, dataContext.dimensionSlots.date, 'Period') : null,
+  ].filter(Boolean);
+
+  return [
+    `${inferDomain(dataContext)} from ${dataContext.sourceName}.`,
+    `Objective: ${prompt.trim() || 'monitor performance and identify drivers'}.`,
+    `Grain: ${dataContext.grain || 'one source row or event record'}.`,
+    `KPIs: ${metrics.length ? metrics.join(', ') : 'no reliable numeric KPI detected'}.`,
+    `Slicers: ${filters.length ? filters.join(', ') : 'none detected'}.`,
+    'Layout follows: header filters, executive KPI row, trend/driver visuals, then deep-dive table. Non-additive metrics are recalculated after filters.',
+  ].join(' ');
+}
+
 export function createDashboardFromDataContext(
   prompt: string,
   currentDashboard: DashboardConfig | undefined,
@@ -311,13 +330,11 @@ export function createDashboardFromDataContext(
     return validateDashboardConfig({
       id: currentDashboard?.id || `ai-dashboard-${Date.now()}`,
       title: titleForPrompt(prompt, dataContext),
-      description: `Generated from ${dataContext.sourceName}. The dashboard uses only detected dataset fields and does not invent metrics.`,
+      description: dashboardDescription(prompt, dataContext),
       filters: [],
       components: [textBox(dataContext, prompt)],
     });
   }
-
-  components.push(textBox(dataContext, prompt));
 
   metrics.slice(0, 4).forEach((metric) => {
     components.push({
@@ -421,10 +438,7 @@ export function createDashboardFromDataContext(
   return validateDashboardConfig({
     id: currentDashboard?.id || `ai-dashboard-${Date.now()}`,
     title: titleForPrompt(prompt, dataContext),
-    description: `Generated from ${dataContext.sourceName}. Fields were selected from the detected dataset structure: ${dataContext.fields
-      .map((field) => field.label)
-      .slice(0, 8)
-      .join(', ')}.`,
+    description: dashboardDescription(prompt, dataContext),
     filters: [
       ...(hasPrimaryDimension
         ? [{ id: 'brand_filter', type: 'select_filter' as const, field: 'brand' as const, title: dimensionLabel(dataContext, 'brand') }]

@@ -250,7 +250,7 @@ Dashboard planning process:
    - Single critical number: kpi. Use gauge only when a target/progress threshold is explicitly required.
    - Operational lookup/detail: data_table.
    - Period intensity: heatmap only when comparing multiple measures across time is useful.
-   - Narrative notes or requested commentary: text_box. Use this for prompts such as "Create a text box with an Insights Overview".
+   - Narrative notes or requested planning output: text_box. Use this only when the user explicitly asks for a text/planning component.
    - Do not use a chart where a KPI/card is clearer.
    - Use tables for detailed or high-cardinality data.
 4. Apply design discipline:
@@ -289,7 +289,7 @@ Available component types:
 - gauge
 - funnel
 - heatmap
-- text_box
+- text_box only when explicitly requested
 - data_table
 
 Renderer metric slots:
