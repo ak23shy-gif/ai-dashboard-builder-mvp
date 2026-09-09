@@ -476,3 +476,23 @@ async def test_ga4_extract_chunks_long_ranges_monthly():
         {"startDate": "2026-02-01", "endDate": "2026-03-03"},
         {"startDate": "2026-03-04", "endDate": "2026-03-15"},
     ]
+
+
+def test_apply_query_uses_ga4_ui_report_planner(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    seen = []
+    class Fake:
+        async def discover(self): return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid): return {"dimensions": ["year", "month", "sessionDefaultChannelGroup", "sessionPrimaryChannelGroup", "sessionManualSource"], "metrics": ["sessions", "activeUsers"]}
+        async def extract(self, q):
+            seen.append((q.start, q.end, q.dimensions, q.metrics, q.options))
+            yield [{"year": "2026", "month": "09", "sessionDefaultChannelGroup": "Organic Search", "sessions": 12, "activeUsers": 10}]
+    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    url = "https://google-api-data-extractor-backend.onrender.com/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&ui_report=traffic_acquisition&exclude_recent_days=2&chunk=monthly&dimensions=year,month,sessionPrimaryChannelGroup,sessionManualSource&metrics=sessions,activeUsers&date_from=2026-09-01&date_to=2026-09-05"
+    r = client.post("/query/apply", json={"url": url}, headers={"Origin": main.ORIGIN})
+    assert r.json()["rows"] == [{"year": "2026", "month": "09", "session_primary_channel_group": "Organic Search", "sessions": 12, "active_users": 10}]
+    assert seen[0][2] == ["year", "month", "sessionDefaultChannelGroup"]
+    assert seen[0][3] == ["sessions", "activeUsers"]
+    assert seen[0][4]["chunk"] == "monthly"

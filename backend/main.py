@@ -438,14 +438,32 @@ async def apply_direct_query(payload: ApplyQueryRequest):
         options = {k.removeprefix("option_"): v for k, v in qs.items() if k.startswith("option_")}
         if qs.get("filters"):
             options["filters"] = qs["filters"]
+        for key in ("chunk", "chunk_days", "chunk_months"):
+            if qs.get(key):
+                options[key] = qs[key]
         if product == "api":
             options.update({k: qs[k] for k in ("url", "method", "headers", "body", "data_path", "limit") if k in qs})
             resources = ["endpoint"]
             if not targets:
                 targets = [{"connection_id": "api", "resource": "endpoint", "options": options}]
-        spec = {"product": product, "workspace": workspace, "connection_id": qs.get("connection_id", ""), "resources": resources, "targets": targets, "start": qs.get("date_from") or qs.get("start") or date.today().isoformat(), "end": qs.get("date_to") or qs.get("end") or date.today().isoformat(), "fields": split_csv(qs.get("fields", "")), "dimensions": split_csv(qs.get("dimensions", "")), "metrics": split_csv(qs.get("metrics", "")), "options": options}
+        start, end = apply_exclude_recent_days(qs.get("date_from") or qs.get("start"), qs.get("date_to") or qs.get("end"), qs)
+        fields_param = split_csv(qs.get("fields", ""))
+        dimensions_param = split_csv(qs.get("dimensions", ""))
+        metrics_param = split_csv(qs.get("metrics", ""))
+        ga4_plan = None
+        ga4_wanted_fields = []
+        if product == "ga4" and (qs.get("ui_report") or qs.get("report")):
+            ga4_wanted_fields = fields_param or dimensions_param + metrics_param
+            ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, qs.get("ui_report") or qs.get("report") or "")
+            fields_param = []
+            dimensions_param = ga4_plan["dimensions"]
+            metrics_param = ga4_plan["metrics"]
+        spec = {"product": product, "workspace": workspace, "connection_id": qs.get("connection_id", ""), "resources": resources, "targets": targets, "start": start, "end": end, "fields": fields_param, "dimensions": dimensions_param, "metrics": metrics_param, "options": options}
         rows = []
         async for row in query_rows(spec):
+            if ga4_plan:
+                wanted = [f for f in ga4_wanted_fields if f not in ga4_plan["ignored_fields"]]
+                row = clean_projected_row(row, wanted, ga4_plan["output_source_fields"], ga4_plan["output_aliases"])
             rows.append(row)
             if len(rows) >= 200:
                 break
