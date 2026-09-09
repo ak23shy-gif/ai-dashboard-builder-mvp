@@ -1,11 +1,88 @@
 import csv
 import io
 import json
+import os
 import re
 import sqlite3
 from pathlib import Path
 
 DATA = Path(__file__).parent / "data"
+
+
+class PostgresCursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def execute(self, sql, params=()):
+        self.cursor.execute(sql.replace("?", "%s"), params)
+        return self
+
+    def executemany(self, sql, seq):
+        self.cursor.executemany(sql.replace("?", "%s"), seq)
+        return self
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+
+    def __iter__(self):
+        return iter(self.cursor)
+
+
+class PostgresConnection:
+    def __init__(self, conn):
+        self.conn = conn
+        self._last_cursor = None
+
+    def execute(self, sql, params=()):
+        cur = PostgresCursor(self.conn.cursor())
+        cur.execute(sql, params)
+        self._last_cursor = cur
+        return cur
+
+    def executemany(self, sql, seq):
+        cur = PostgresCursor(self.conn.cursor())
+        cur.executemany(sql, seq)
+        self._last_cursor = cur
+        return cur
+
+    def executescript(self, script):
+        self.conn.execute(script)
+
+    @property
+    def total_changes(self):
+        return self._last_cursor.rowcount if self._last_cursor else 0
+
+    def close(self):
+        self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type:
+            self.conn.rollback()
+        else:
+            self.conn.commit()
+        self.conn.close()
+
+
+def using_postgres():
+    return bool(os.getenv("DATABASE_URL", "").strip())
+
+
+def normalize_database_url(url):
+    if url.startswith("postgresql://"):
+        return url
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://"):]
+    return url
 
 
 def column_names(names):
@@ -22,6 +99,12 @@ def column_names(names):
 
 
 def db():
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        import psycopg
+        from psycopg.rows import dict_row
+        conn = psycopg.connect(normalize_database_url(database_url), row_factory=dict_row)
+        return PostgresConnection(conn)
     DATA.mkdir(exist_ok=True)
     conn = sqlite3.connect(DATA / "extract.db", timeout=30)
     conn.row_factory = sqlite3.Row
@@ -31,25 +114,44 @@ def db():
 
 def init():
     with db() as c:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, value BLOB);
-        CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, owner TEXT, status TEXT, spec TEXT, columns TEXT DEFAULT '[]', count INTEGER DEFAULT 0, error TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS rows (job TEXT, data TEXT, UNIQUE(job,data));
-        CREATE INDEX IF NOT EXISTS rows_job ON rows(job);
-        CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, end_date TEXT);
-        CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, owner TEXT, expires REAL);
-        CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
-        CREATE TABLE IF NOT EXISTS oauth_states (id TEXT PRIMARY KEY, data TEXT, expires REAL);
-        CREATE INDEX IF NOT EXISTS oauth_states_expires ON oauth_states(expires);
-        CREATE TABLE IF NOT EXISTS job_sources (
-            job TEXT, position INTEGER, connection_id TEXT, email TEXT,
-            resource TEXT, name TEXT, start_date TEXT, end_date TEXT,
-            status TEXT DEFAULT 'queued', count INTEGER DEFAULT 0, error TEXT,
-            PRIMARY KEY(job,position)
-        );
-        """)
-        if "source" not in {row[1] for row in c.execute("PRAGMA table_info(rows)")}:
-            c.execute("ALTER TABLE rows ADD COLUMN source INTEGER")
+        if using_postgres():
+            c.executescript("""
+            CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, value BYTEA);
+            CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, owner TEXT, status TEXT, spec TEXT, columns TEXT DEFAULT '[]', count INTEGER DEFAULT 0, error TEXT, created TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS rows (job TEXT, data TEXT, source INTEGER, UNIQUE(job,data));
+            CREATE INDEX IF NOT EXISTS rows_job ON rows(job);
+            CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, end_date TEXT);
+            CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, owner TEXT, expires DOUBLE PRECISION);
+            CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
+            CREATE TABLE IF NOT EXISTS oauth_states (id TEXT PRIMARY KEY, data TEXT, expires DOUBLE PRECISION);
+            CREATE INDEX IF NOT EXISTS oauth_states_expires ON oauth_states(expires);
+            CREATE TABLE IF NOT EXISTS job_sources (
+                job TEXT, position INTEGER, connection_id TEXT, email TEXT,
+                resource TEXT, name TEXT, start_date TEXT, end_date TEXT,
+                status TEXT DEFAULT 'queued', count INTEGER DEFAULT 0, error TEXT,
+                PRIMARY KEY(job,position)
+            );
+            """)
+        else:
+            c.executescript("""
+            CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, value BLOB);
+            CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, owner TEXT, status TEXT, spec TEXT, columns TEXT DEFAULT '[]', count INTEGER DEFAULT 0, error TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS rows (job TEXT, data TEXT, UNIQUE(job,data));
+            CREATE INDEX IF NOT EXISTS rows_job ON rows(job);
+            CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, end_date TEXT);
+            CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, owner TEXT, expires REAL);
+            CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
+            CREATE TABLE IF NOT EXISTS oauth_states (id TEXT PRIMARY KEY, data TEXT, expires REAL);
+            CREATE INDEX IF NOT EXISTS oauth_states_expires ON oauth_states(expires);
+            CREATE TABLE IF NOT EXISTS job_sources (
+                job TEXT, position INTEGER, connection_id TEXT, email TEXT,
+                resource TEXT, name TEXT, start_date TEXT, end_date TEXT,
+                status TEXT DEFAULT 'queued', count INTEGER DEFAULT 0, error TEXT,
+                PRIMARY KEY(job,position)
+            );
+            """)
+            if "source" not in {row[1] for row in c.execute("PRAGMA table_info(rows)")}:
+                c.execute("ALTER TABLE rows ADD COLUMN source INTEGER")
         c.execute("UPDATE jobs SET status='failed', error='Server stopped during extraction. Run the extraction again.' WHERE status IN ('queued','running')")
         c.execute("UPDATE job_sources SET status='failed', error='Server stopped during extraction.' WHERE status IN ('queued','running')")
 
