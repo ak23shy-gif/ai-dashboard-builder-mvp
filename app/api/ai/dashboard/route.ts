@@ -100,6 +100,21 @@ function extractGeminiOutputText(response: GeminiResponse) {
     .join('\n');
 }
 
+function parseDashboardPayload(outputText: string) {
+  try {
+    return JSON.parse(outputText) as { dashboard?: DashboardConfig };
+  } catch (error) {
+    const start = outputText.indexOf('{');
+    const end = outputText.lastIndexOf('}');
+
+    if (start >= 0 && end > start) {
+      return JSON.parse(outputText.slice(start, end + 1)) as { dashboard?: DashboardConfig };
+    }
+
+    throw error;
+  }
+}
+
 function localPlannerResponse(prompt: string, currentDashboard: DashboardConfig | undefined, reason: string) {
   return NextResponse.json({
     dashboard: generateLocalDashboard(prompt, currentDashboard),
@@ -137,7 +152,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
           strict: false,
         },
       },
-      max_output_tokens: 1800,
+      max_output_tokens: 3000,
     }),
   }).finally(() => clearTimeout(timeout));
 
@@ -157,7 +172,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
     return localPlannerResponse(prompt, currentDashboard, 'Local planner used because OpenAI returned an empty response.');
   }
 
-  const parsed = JSON.parse(outputText) as { dashboard?: DashboardConfig };
+  const parsed = parseDashboardPayload(outputText);
 
   if (!parsed.dashboard) {
     return localPlannerResponse(prompt, currentDashboard, 'Local planner used because the OpenAI response did not include a dashboard.');
@@ -208,7 +223,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
           generationConfig: {
             responseMimeType: 'application/json',
             temperature: 0.2,
-            maxOutputTokens: 1800,
+            maxOutputTokens: 4096,
           },
         }),
       },
@@ -228,7 +243,14 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
       continue;
     }
 
-    const parsed = JSON.parse(outputText) as { dashboard?: DashboardConfig };
+    let parsed: { dashboard?: DashboardConfig };
+
+    try {
+      parsed = parseDashboardPayload(outputText);
+    } catch (error) {
+      failures.push(`${model}: invalid JSON (${error instanceof Error ? error.message : 'parse failed'})`);
+      continue;
+    }
 
     if (!parsed.dashboard) {
       failures.push(`${model}: response did not include a dashboard`);
