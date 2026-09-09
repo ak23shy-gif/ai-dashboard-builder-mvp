@@ -11,6 +11,7 @@ export type ApiSourceInput = {
 type RawRow = Record<string, unknown>;
 
 const previewLimit = 1000;
+const apiTimeoutMs = 25000;
 
 function parseJsonObject(value: string | undefined, fallback: Record<string, string>) {
   if (!value?.trim()) {
@@ -79,23 +80,61 @@ export async function previewApiSource(input: ApiSourceInput): Promise<ImportedD
   const url = assertUrl(input.url);
   const headers = parseJsonObject(input.headers, {});
   const body = input.method === 'POST' ? JSON.stringify(parseJsonObject(input.body, {})) : undefined;
+  let response: Response;
 
-  const response = await fetch(url, {
-    method: input.method,
-    headers: {
-      Accept: 'application/json',
-      ...(input.method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
-      ...headers,
-    },
-    body,
-    signal: AbortSignal.timeout(12000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`API request failed with ${response.status} ${response.statusText}.`);
+  try {
+    response = await fetch(url, {
+      method: input.method,
+      headers: {
+        Accept: 'application/json',
+        ...(input.method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+        ...headers,
+      },
+      body,
+      signal: AbortSignal.timeout(apiTimeoutMs),
+    });
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === 'TimeoutError';
+    throw new Error(
+      aborted
+        ? `API request timed out after ${Math.round(apiTimeoutMs / 1000)} seconds. Try a shorter date range, fewer properties, or fewer metrics/dimensions.`
+        : error instanceof Error
+          ? error.message
+          : 'API request failed before a response was received.',
+    );
   }
 
-  const json = await response.json();
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    const message = responseText
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 300);
+
+    throw new Error(`API request failed with ${response.status} ${response.statusText}${message ? `: ${message}` : ''}.`);
+  }
+
+  if (!responseText.trim()) {
+    throw new Error('API returned an empty response. Check the endpoint, API key, date range and selected resources.');
+  }
+
+  let json: unknown;
+
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    throw new Error(
+      `API response was not valid JSON. Received: ${responseText
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300)}`,
+    );
+  }
+
   const rows = findRows(getPathValue(json, input.dataPath)).slice(0, previewLimit);
   const { columns, mappedColumns, rows: normalisedRows } = normaliseRawRows(rows);
 

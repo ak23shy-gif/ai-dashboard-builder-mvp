@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { previewApiSource, type ApiSourceInput } from '@/lib/data/apiSource';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
   try {
-    const input = (await request.json()) as ApiSourceInput;
+    const text = await request.text();
+    const input = JSON.parse(text || '{}') as ApiSourceInput;
     const dataset = await previewApiSource(input);
 
     return NextResponse.json({ dataset });

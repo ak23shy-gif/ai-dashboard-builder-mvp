@@ -26,6 +26,28 @@ export function ApiSourceConnector({ onDataImported }: ApiSourceConnectorProps) 
   });
   const [isLoading, setIsLoading] = useState(false);
 
+  async function readPreviewResult(response: Response) {
+    const text = await response.text();
+
+    if (!text.trim()) {
+      return { error: `DashForge API connector returned ${response.status} ${response.statusText} with no response body.` };
+    }
+
+    try {
+      return JSON.parse(text) as { dataset?: ImportedDataset; error?: string };
+    } catch {
+      return {
+        error: text
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 300) || 'DashForge API connector returned a non-JSON response.',
+      };
+    }
+  }
+
   function updateSource<K extends keyof ApiSourceInput>(key: K, value: ApiSourceInput[K]) {
     setApiSource((current) => ({ ...current, [key]: value }));
   }
@@ -45,16 +67,20 @@ export function ApiSourceConnector({ onDataImported }: ApiSourceConnectorProps) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(apiSource),
       });
-      const result = await response.json();
+      const result = await readPreviewResult(response);
 
       if (!response.ok) {
         throw new Error(result.error || 'API preview failed.');
       }
 
-      onDataImported(result.dataset as ImportedDataset);
+      if (!result.dataset) {
+        throw new Error(result.error || 'API preview did not return a dataset.');
+      }
+
+      onDataImported(result.dataset);
       setState({
         status: 'success',
-        message: `Dashboard generated from API. Using ${(result.dataset as ImportedDataset).processedRowCount.toLocaleString('en-GB')} usable rows.`,
+        message: `Dashboard generated from API. Using ${result.dataset.processedRowCount.toLocaleString('en-GB')} usable rows.`,
       });
     } catch (error) {
       setState({
