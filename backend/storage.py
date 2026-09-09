@@ -93,6 +93,10 @@ def normalize_database_url(url):
     return url
 
 
+def row_value(row, key, index=0):
+    return row.get(key) if isinstance(row, dict) else row[index]
+
+
 def column_names(names):
     used, out = set(), []
     for raw in names:
@@ -190,7 +194,7 @@ def export_rows(job, columns, fmt):
             yield "["
             first = True
             for row in cur:
-                data = json.loads(row["data"] if isinstance(row, dict) else row[0])
+                data = json.loads(row_value(row, "data", 0))
                 yield ("" if first else ",") + json.dumps({k: data.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
                 first = False
             yield "]"
@@ -202,7 +206,7 @@ def export_rows(job, columns, fmt):
             for row in cur:
                 buf.seek(0)
                 buf.truncate(0)
-                raw = row["data"] if isinstance(row, dict) else row[0]
+                raw = row_value(row, "data", 0)
                 writer.writerow([json.loads(raw).get(k) for k in columns])
                 yield buf.getvalue()
     finally:

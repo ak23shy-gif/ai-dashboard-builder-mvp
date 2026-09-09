@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .connectors import CATALOG, CONNECTORS, find_rows, flatten
-from .storage import db, init, insert_rows, export_rows, column_names
+from .storage import db, init, insert_rows, export_rows, column_names, row_value
 from .accounts import cipher, save_token, read_token, list_accounts, remove_account
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -47,7 +47,7 @@ def get_workspace_query_key(workspace):
         secret_id = "query_api_key:" + workspace
         row = c.execute("SELECT value FROM secrets WHERE id=?", (secret_id,)).fetchone()
         if row:
-            return cipher().decrypt(row[0]).decode()
+            return cipher().decrypt(row_value(row, "value", 0)).decode()
         key = secrets.token_urlsafe(32)
         c.execute("INSERT INTO secrets(id,value) VALUES (?,?)", (secret_id, cipher().encrypt(key.encode())))
         return key
@@ -878,7 +878,7 @@ async def extract(q: Query, request: Request):
             if q.incremental:
                 saved = c.execute("SELECT end_date FROM checkpoints WHERE id=?", (checkpoint_key(uid, q),)).fetchone()
                 if saved:
-                    q.start = max(start, date.fromisoformat(saved[0])+timedelta(days=1)).isoformat()
+                    q.start = max(start, date.fromisoformat(row_value(saved, "end_date", 0))+timedelta(days=1)).isoformat()
                     api_query.start = q.start
                     if q.start > q.end:
                         raise HTTPException(409, "Already extracted through this end date. Choose a later end date or turn off incremental mode.")
@@ -955,7 +955,8 @@ async def run_batch(jid, uid, prepared, columns, internal_columns=None):
             c.execute("UPDATE jobs SET status='running' WHERE id=?", (jid,))
         for index, (q, con, name, email) in enumerate(prepared):
             with db() as c:
-                if c.execute("SELECT status FROM job_sources WHERE job=? AND position=?", (jid, index)).fetchone()[0] == "skipped":
+                status_row = c.execute("SELECT status FROM job_sources WHERE job=? AND position=?", (jid, index)).fetchone()
+                if row_value(status_row, "status", 0) == "skipped":
                     continue
                 c.execute("UPDATE job_sources SET status='running' WHERE job=? AND position=?", (jid, index))
             try:
@@ -982,7 +983,7 @@ async def run_batch(jid, uid, prepared, columns, internal_columns=None):
                     c.execute("UPDATE jobs SET count=count-? WHERE id=?", (removed, jid))
                     c.execute("UPDATE job_sources SET status='failed',count=0,error=? WHERE job=? AND position=?", (failure_message(exc), jid, index))
         with db() as c:
-            states = [r[0] for r in c.execute("SELECT status FROM job_sources WHERE job=?", (jid,))]
+            states = [row_value(r, "status", 0) for r in c.execute("SELECT status FROM job_sources WHERE job=?", (jid,))]
             failed = states.count("failed")
             final = "partial" if failed and "complete" in states else "failed" if failed else "complete"
             error = f"{failed} source(s) failed. Only successful sources are available for export." if failed else None
@@ -1052,7 +1053,7 @@ async def job(jid: str, request: Request, offset: int = 0, limit: int = 50):
         rows = c.execute("SELECT data FROM rows WHERE job=? ORDER BY rowid LIMIT ? OFFSET ?", (jid, max(1, min(limit, 200)), max(0, offset))).fetchall()
         sources = [dict(r) for r in c.execute("SELECT * FROM job_sources WHERE job=? ORDER BY position", (jid,))]
     columns = json.loads(row["columns"])
-    return {**row, "spec": json.loads(row["spec"]), "columns": columns, "rows": [{k: value.get(k) for k in columns} for value in (json.loads(r[0]) for r in rows)], "sources": sources}
+    return {**row, "spec": json.loads(row["spec"]), "columns": columns, "rows": [{k: value.get(k) for k in columns} for value in (json.loads(row_value(r, "data", 0)) for r in rows)], "sources": sources}
 
 
 @app.get("/jobs/{jid}/export")

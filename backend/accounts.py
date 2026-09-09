@@ -5,7 +5,7 @@ import os
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
-from .storage import db
+from .storage import db, row_value
 
 
 def cipher():
@@ -43,13 +43,14 @@ def read_token(workspace=None, connection=None):
     with db() as c:
         row = c.execute("SELECT value FROM secrets WHERE id=?", (key,)).fetchone()
         if row:
-            return decode(row[0])
+            return decode(row_value(row, "value", 0))
         # Migrate the original single-account store only to its own workspace.
         legacy = c.execute("SELECT value FROM secrets WHERE id='google'").fetchone()
         if legacy:
-            token = decode(legacy[0])
+            encrypted = row_value(legacy, "value", 0)
+            token = decode(encrypted)
             if workspace and token.get("sub") == workspace == (connection or workspace):
-                c.execute("INSERT OR IGNORE INTO secrets VALUES (?,?)", (key, legacy[0]))
+                c.execute("INSERT OR IGNORE INTO secrets VALUES (?,?)", (key, encrypted))
                 c.execute("DELETE FROM secrets WHERE id='google'")
                 return token
     return None
