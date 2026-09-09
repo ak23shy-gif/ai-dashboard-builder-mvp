@@ -90,7 +90,10 @@ function titleForPrompt(prompt: string, dataContext: DashboardDataContext) {
 
 function wantsOnlyText(prompt: string) {
   const text = normalise(prompt);
-  return text.includes('text box') || (text.includes('insight') && !/\b(chart|visual|kpi|table|dashboard)\b/.test(text));
+  return (
+    (text.includes('text box') || text.includes('insight')) &&
+    !/\b(chart|visual|kpi|table|dashboard|show|showing|trend|breakdown|by)\b/.test(text)
+  );
 }
 
 function wantsTable(prompt: string) {
