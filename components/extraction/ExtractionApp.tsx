@@ -27,9 +27,19 @@ const publicApiBase = process.env.NEXT_PUBLIC_EXTRACT_API_BASE_URL?.replace(/\/$
 const cleanEditableUrl = (value: string) => value.trim().replace(/\\_/g, '_').replace(/\\&/g, '&').replace(/^\[[^\]]+\]\(([\s\S]*)\)$/, '$1').trim();
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
-  try { r = await fetch('/extract-api' + path, init); } catch { throw new Error('The extraction server is unavailable. Start the Python backend using the setup guide.'); }
-  const d = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : r.status === 422 ? 'Check the selected fields and dates.' : 'The extraction server is unavailable. Start the Python backend using the setup guide.');
+  try {
+    r = await fetch('/extract-api' + path, init);
+  } catch {
+    throw new Error('Could not reach the deployed extraction backend. Check Render status and try again.');
+  }
+  const text = await r.text();
+  let d: any = null;
+  try { d = text ? JSON.parse(text) : null; } catch { /* Keep the raw response text for the error below. */ }
+  if (!r.ok) {
+    const detail = typeof d?.detail === 'string' ? d.detail : text?.slice(0, 180);
+    throw new Error(detail || `Extraction backend returned HTTP ${r.status}.`);
+  }
+  if (!d) throw new Error('Extraction backend returned an empty or non-JSON response.');
   return d;
 }
 
