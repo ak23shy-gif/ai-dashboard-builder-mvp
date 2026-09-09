@@ -247,6 +247,7 @@ export async function previewDatabaseTable(
       fileName: `${connection.database}.${schema}.${tableName}`,
       mappedColumns,
       processedRowCount: rows.length,
+      processedRows: rows,
       rawRowCount: rawRows.length,
       rawRows,
       sourceType: 'database',

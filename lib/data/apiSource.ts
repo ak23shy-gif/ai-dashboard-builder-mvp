@@ -124,6 +124,7 @@ export async function previewApiSource(input: ApiSourceInput): Promise<ImportedD
       fileName: url,
       mappedColumns,
       processedRowCount: normalisedRows.length,
+      processedRows: normalisedRows,
       rawRowCount: rows.length,
       rawRows: rows,
       sourceType: 'api',

@@ -50,24 +50,201 @@ function hasDimension(dataContext: DashboardDataContext, dimension: 'brand' | 'c
   return Boolean(dimension === 'brand' ? dataContext.dimensionSlots.primary : dataContext.dimensionSlots.secondary);
 }
 
-function textBox(dataContext: DashboardDataContext): TextBoxComponentConfig {
-  const metricNames = availableMetrics(dataContext)
-    .map((metric) => metricLabel(dataContext, metric))
-    .slice(0, 4);
-  const dimensions = [
-    dataContext.dimensionSlots.primary ? dimensionLabel(dataContext, 'brand') : null,
-    dataContext.dimensionSlots.secondary ? dimensionLabel(dataContext, 'channel') : null,
+function inferDomain(dataContext: DashboardDataContext) {
+  const text = normalise(`${dataContext.sourceName} ${dataContext.fields.map((field) => field.name).join(' ')}`);
+
+  if (/\b(order|sales|revenue|profit|customer|retail|invoice|product)\b/.test(text)) {
+    return 'Commercial / transaction performance data';
+  }
+
+  if (/\b(employee|hr|salary|department|absence|attrition|headcount)\b/.test(text)) {
+    return 'HR / workforce data';
+  }
+
+  if (/\b(patient|clinic|health|appointment|diagnosis|treatment)\b/.test(text)) {
+    return 'Healthcare / service activity data';
+  }
+
+  if (/\b(shipment|delivery|warehouse|route|carrier|stock|inventory)\b/.test(text)) {
+    return 'Logistics / operations data';
+  }
+
+  if (/\b(session|campaign|lead|channel|traffic|conversion|website)\b/.test(text)) {
+    return 'Marketing / digital performance data';
+  }
+
+  if (/\b(ticket|case|incident|sla|priority|status|resolved)\b/.test(text)) {
+    return 'Service / support operations data';
+  }
+
+  return 'General business dataset';
+}
+
+function fieldTypeLabel(role: string) {
+  const labels: Record<string, string> = {
+    date: 'date',
+    dimension: 'category',
+    measure: 'number',
+    currency: 'number/currency',
+    percentage: 'percentage',
+    identifier: 'text/id',
+    unknown: 'text/unknown',
+  };
+
+  return labels[role] || role;
+}
+
+function fieldList(dataContext: DashboardDataContext) {
+  return dataContext.fields
+    .map((field) => {
+      const samples = field.sampleValues.length ? `; examples: ${field.sampleValues.join(', ')}` : '';
+      const mapping = field.mappedTo ? `; mapped as ${field.mappedTo}` : '';
+      return `- ${field.label} (${field.name}): ${fieldTypeLabel(field.role)}; ${field.distinctValues} distinct${mapping}${samples}`;
+    })
+    .join('\n');
+}
+
+function kpiDefinitions(dataContext: DashboardDataContext) {
+  const metrics = availableMetrics(dataContext).slice(0, 4);
+  const definitions = metrics.map((metric) => {
+    const sourceColumn = dataContext.metricSlots[metric];
+    return `- ${metricLabel(dataContext, metric)} = SUM([${sourceColumn}])`;
+  });
+
+  if (metrics.length >= 2) {
+    definitions.push(
+      `- ${metricLabel(dataContext, metrics[1])} Rate = SUM([${dataContext.metricSlots[metrics[1]]}]) / SUM([${
+        dataContext.metricSlots[metrics[0]]
+      }])`,
+    );
+  }
+
+  return definitions.length ? definitions.join('\n') : '- No reliable additive KPI was detected from the uploaded fields.';
+}
+
+function comparisonPlan(dataContext: DashboardDataContext) {
+  const metrics = availableMetrics(dataContext);
+  const comparisons: string[] = [];
+
+  if (dataContext.dimensionSlots.date && metrics[0]) {
+    comparisons.push(`- Trend over time: ${metricLabel(dataContext, metrics[0])} by ${fieldLabel(dataContext, dataContext.dimensionSlots.date, 'Period')}.`);
+  }
+
+  if (dataContext.dimensionSlots.secondary && metrics[0]) {
+    comparisons.push(`- Category comparison: ${metricLabel(dataContext, metrics[0])} by ${dimensionLabel(dataContext, 'channel')}, sorted highest to lowest.`);
+  }
+
+  if (dataContext.dimensionSlots.primary && (metrics[1] || metrics[0])) {
+    comparisons.push(
+      `- Driver comparison: ${metricLabel(dataContext, metrics[1] || metrics[0])} by ${dimensionLabel(dataContext, 'brand')}, not alphabetical.`,
+    );
+  }
+
+  if (metrics.length >= 2) {
+    comparisons.push(`- Efficiency comparison: ratio of ${metricLabel(dataContext, metrics[1])} to ${metricLabel(dataContext, metrics[0])}.`);
+  }
+
+  return comparisons.length ? comparisons.join('\n') : '- No meaningful comparison dimension was detected.';
+}
+
+function visualRationale(dataContext: DashboardDataContext) {
+  const metrics = availableMetrics(dataContext);
+  const rationale: string[] = [];
+
+  if (dataContext.dimensionSlots.date && metrics.length) {
+    rationale.push(
+      `- Line/area chart for period trend, because time movement is easier to read as a connected trend; a pie chart would hide seasonality and change.`,
+    );
+  }
+
+  if (dataContext.dimensionSlots.secondary && metrics[0]) {
+    rationale.push(
+      `- Horizontal bar chart for ${dimensionLabel(dataContext, 'channel')} ranking, because long labels and sorted values are readable; a pie chart would mislead if there are many categories.`,
+    );
+  }
+
+  if (dataContext.dimensionSlots.primary && (metrics[1] || metrics[0])) {
+    rationale.push(
+      `- Bar chart for ${dimensionLabel(dataContext, 'brand')} comparison, because category vs category is the question; a KPI alone would hide which category drives the result.`,
+    );
+  }
+
+  rationale.push('- Table for detail/drill-down, because high-cardinality records are better scanned as rows than forced into crowded charts.');
+
+  return rationale.join('\n');
+}
+
+function filterPlan(dataContext: DashboardDataContext) {
+  const filters = [
+    dataContext.dimensionSlots.primary ? `- ${dimensionLabel(dataContext, 'brand')}` : null,
+    dataContext.dimensionSlots.secondary ? `- ${dimensionLabel(dataContext, 'channel')}` : null,
+    dataContext.dimensionSlots.date ? `- ${fieldLabel(dataContext, dataContext.dimensionSlots.date, 'Period')}` : null,
   ].filter(Boolean);
+
+  return filters.length ? filters.join('\n') : '- No reliable slicer fields detected.';
+}
+
+function outlierPlan(dataContext: DashboardDataContext) {
+  const metrics = availableMetrics(dataContext);
+
+  if (!metrics.length) {
+    return 'No numeric measure was detected, so anomaly callouts are not shown.';
+  }
+
+  return `Watch for unusually high/low ${metricLabel(dataContext, metrics[0])} by period or category. The dashboard surfaces this through sorted ranking charts and period intensity; full statistical anomaly detection should compare each value to its recent average/IQR.`;
+}
+
+function layoutPlan(dataContext: DashboardDataContext) {
+  const metrics = availableMetrics(dataContext);
+  const steps = ['1. Insights Overview: source, grain, field mapping, KPI formulas and chart reasoning.'];
+
+  if (metrics.length) {
+    steps.push(`2. KPI strip: ${metrics.slice(0, 4).map((metric) => metricLabel(dataContext, metric)).join(', ')}.`);
+  }
+
+  if (dataContext.dimensionSlots.date) {
+    steps.push('3. Trend section: period movement before category drill-down.');
+  }
+
+  if (dataContext.dimensionSlots.primary || dataContext.dimensionSlots.secondary) {
+    steps.push('4. Driver section: ranked category comparisons sorted by value.');
+  }
+
+  steps.push('5. Detail section: table for lookup, QA and follow-up.');
+
+  return steps.join('\n');
+}
+
+function textBox(dataContext: DashboardDataContext, prompt: string): TextBoxComponentConfig {
+  const businessQuestion =
+    prompt.trim() || 'Assumption: identify what is performing best or worst, what changed over time, and which category needs action.';
+  const audience = 'Assumption: business users and analysts who need a quick read plus enough detail to investigate.';
 
   return {
     id: 'insights_overview',
     type: 'text_box',
     title: 'Insights Overview',
     content: [
-      `Source: ${dataContext.sourceName}.`,
-      metricNames.length ? `Key measures available: ${metricNames.join(', ')}.` : 'No reliable additive measures were detected.',
-      dimensions.length ? `Useful breakdowns: ${dimensions.join(' and ')}.` : 'No low-cardinality category breakdown was detected.',
-      'DashForge will build visuals only from these detected fields and will avoid identifier columns as measures.',
+      `Domain/source: ${inferDomain(dataContext)} from ${dataContext.sourceName} (${dataContext.sourceType.toUpperCase()}).`,
+      '',
+      `Columns/fields:\n${fieldList(dataContext)}`,
+      '',
+      `Grain: ${dataContext.grain || 'one source row or event record'}.`,
+      `Time range & frequency: ${dataContext.timeRange?.label || 'not detected'}; ${dataContext.timeRange?.frequency || 'not detected'}.`,
+      `Business question: ${businessQuestion}`,
+      `Audience: ${audience}`,
+      '',
+      `KPIs that matter most:\n${kpiDefinitions(dataContext)}`,
+      '',
+      `Meaningful comparisons:\n${comparisonPlan(dataContext)}`,
+      '',
+      `Chart choices and why:\n${visualRationale(dataContext)}`,
+      '',
+      `Filters/slicers:\n${filterPlan(dataContext)}`,
+      '',
+      `Outlier / so-what callout: ${outlierPlan(dataContext)}`,
+      '',
+      `Suggested layout / reading order:\n${layoutPlan(dataContext)}`,
     ].join('\n'),
     layout: { className: 'xl:col-span-2' },
   };
@@ -136,11 +313,11 @@ export function createDashboardFromDataContext(
       title: titleForPrompt(prompt, dataContext),
       description: `Generated from ${dataContext.sourceName}. The dashboard uses only detected dataset fields and does not invent metrics.`,
       filters: [],
-      components: [textBox(dataContext)],
+      components: [textBox(dataContext, prompt)],
     });
   }
 
-  components.push(textBox(dataContext));
+  components.push(textBox(dataContext, prompt));
 
   metrics.slice(0, 4).forEach((metric) => {
     components.push({

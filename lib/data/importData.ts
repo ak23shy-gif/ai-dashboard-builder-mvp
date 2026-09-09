@@ -17,6 +17,13 @@ export type DashboardDataContext = {
   sourceType: ImportedDataset['sourceType'];
   rawRowCount: number;
   processedRowCount: number;
+  grain?: string;
+  timeRange?: {
+    label: string;
+    frequency: string;
+    start?: string;
+    end?: string;
+  };
   fields: DataFieldProfile[];
   metricSlots: {
     leads?: string;
@@ -372,6 +379,7 @@ export function createDataContext({
   processedRowCount,
   rawRowCount,
   rawRows,
+  processedRows = [],
   sourceType,
 }: {
   columns: string[];
@@ -380,6 +388,7 @@ export function createDataContext({
   processedRowCount: number;
   rawRowCount: number;
   rawRows: RawRow[];
+  processedRows?: MarketingRow[];
   sourceType: ImportedDataset['sourceType'];
 }): DashboardDataContext {
   const mappedEntries = Object.entries(mappedColumns).reduce<Record<string, keyof ImportedDataset['mappedColumns']>>(
@@ -398,6 +407,8 @@ export function createDataContext({
     sourceType,
     rawRowCount,
     processedRowCount,
+    grain: inferGrain(columns, mappedColumns),
+    timeRange: inferTimeRange(processedRows, mappedColumns),
     fields: columns.map((column) => {
       const sampleValues = Array.from(
         new Set(
@@ -442,6 +453,45 @@ export function createDataContext({
       primary: mappedColumns.brand,
       secondary: mappedColumns.channel,
     },
+  };
+}
+
+function inferGrain(columns: string[], mappedColumns: ImportedDataset['mappedColumns']) {
+  const idColumn = columns.find(isIdentifierColumn);
+  const dateColumn = mappedColumns.date || mappedColumns.month;
+  const primaryDimension = mappedColumns.brand;
+  const secondaryDimension = mappedColumns.channel;
+  const parts = [
+    idColumn ? `one record/transaction identified by ${cleanFieldLabel(idColumn)}` : 'one source row or event record',
+    dateColumn ? `at ${cleanFieldLabel(dateColumn)} level` : null,
+    primaryDimension ? `split by ${cleanFieldLabel(primaryDimension)}` : null,
+    secondaryDimension ? `and ${cleanFieldLabel(secondaryDimension)}` : null,
+  ].filter(Boolean);
+
+  return parts.join(' ');
+}
+
+function inferTimeRange(rows: MarketingRow[], mappedColumns: ImportedDataset['mappedColumns']) {
+  const datedRows = rows
+    .map((row) => row.date)
+    .filter(Boolean)
+    .sort();
+
+  if (!datedRows.length || (!mappedColumns.date && !mappedColumns.month && !mappedColumns.year)) {
+    return {
+      label: 'No reliable date field detected',
+      frequency: 'Not detected',
+    };
+  }
+
+  const distinctMonths = new Set(rows.map((row) => `${row.year}-${String(row.monthIndex).padStart(2, '0')}`)).size;
+  const distinctYears = new Set(rows.map((row) => row.year)).size;
+
+  return {
+    label: `${datedRows[0]} to ${datedRows[datedRows.length - 1]}`,
+    frequency: distinctMonths > distinctYears ? 'Monthly/periodic' : 'Yearly or low-frequency',
+    start: datedRows[0],
+    end: datedRows[datedRows.length - 1],
   };
 }
 
@@ -676,6 +726,7 @@ export async function importDashboardFile(file: File): Promise<ImportedDataset> 
       fileName: file.name,
       mappedColumns,
       processedRowCount: rows.length,
+      processedRows: rows,
       rawRowCount: rawRows.length,
       rawRows: limitedRawRows,
       sourceType: isExcel ? 'excel' : 'csv',
