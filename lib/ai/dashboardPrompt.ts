@@ -1,4 +1,5 @@
 import type { DashboardConfig } from '@/types/dashboard';
+import type { DashboardDataContext } from '@/lib/data/importData';
 
 export const dashboardJsonSchema = {
   type: 'object',
@@ -298,6 +299,14 @@ Available filters:
 
 Important: The slot names are internal renderer names. Use the dashboard's existing titles/series labels whenever possible.
 Do not expose labels such as Leads, Brand or Channel unless the active dataset or user prompt actually uses those terms.
+When activeDataContext is provided:
+- Treat it as the source of truth for available fields and meanings.
+- Use fields marked identifier only for lookup/detail tables when specifically useful; do not chart or sum them.
+- Use fields marked currency as monetary KPIs/charts and keep their clean labels in visual titles.
+- Use fields marked percentage only as non-additive KPIs unless the user asks for detailed rates.
+- Prefer fields mapped to metricSlots for supported renderer metric slots.
+- Prefer fields mapped to dimensionSlots for filters and category breakdowns.
+- If the user asks for a field that is not available, adapt to the closest available field and explain the assumption in description.
 
 If the user asks to update an existing dashboard, modify the current dashboard instead of creating an unrelated one.
 Keep component IDs stable when editing existing components.
@@ -308,11 +317,16 @@ Avoid gauges and pie/donut charts unless the user's intent clearly calls for the
 `.trim();
 }
 
-export function buildDashboardUserPrompt(prompt: string, currentDashboard?: DashboardConfig) {
+export function buildDashboardUserPrompt(
+  prompt: string,
+  currentDashboard?: DashboardConfig,
+  dataContext?: DashboardDataContext,
+) {
   return JSON.stringify(
     {
       instruction: prompt,
       currentDashboard: currentDashboard || null,
+      activeDataContext: dataContext || null,
     },
     null,
     2,

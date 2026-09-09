@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { DataSourcePanel } from '@/components/data/DataSourcePanel';
-import type { ImportedDataset } from '@/lib/data/importData';
+import type { DashboardDataContext, ImportedDataset } from '@/lib/data/importData';
 import type { DashboardConfig } from '@/types/dashboard';
 
 const examples = [
@@ -31,6 +31,7 @@ const examples = [
 ];
 
 type AIAssistantProps = {
+  dataContext?: DashboardDataContext;
   currentDashboard: DashboardConfig;
   onDataImported: (dataset: ImportedDataset) => void;
   onDashboardGenerated: (dashboard: DashboardConfig) => void;
@@ -74,6 +75,7 @@ async function readDashboardApiResult(response: Response): Promise<DashboardApiR
 }
 
 export function AIAssistant({
+  dataContext,
   currentDashboard,
   onDataImported,
   onDashboardGenerated,
@@ -99,7 +101,7 @@ export function AIAssistant({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt, currentDashboard }),
+        body: JSON.stringify({ prompt, currentDashboard, dataContext }),
       });
 
       const result = await readDashboardApiResult(response);

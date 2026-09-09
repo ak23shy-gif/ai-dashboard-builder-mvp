@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { buildDashboardSystemPrompt, buildDashboardUserPrompt, dashboardJsonSchema } from '@/lib/ai/dashboardPrompt';
 import { validateDashboardConfig } from '@/lib/ai/dashboardSchema';
 import { generateLocalDashboard } from '@/lib/ai/demoDashboardGenerator';
+import type { DashboardDataContext } from '@/lib/data/importData';
 import type { DashboardConfig } from '@/types/dashboard';
 
 export const runtime = 'nodejs';
@@ -12,6 +13,7 @@ const providerTimeoutMs = 6500;
 type DashboardApiRequest = {
   prompt?: string;
   currentDashboard?: DashboardConfig;
+  dataContext?: DashboardDataContext;
 };
 
 type OpenAIContentItem = {
@@ -102,7 +104,7 @@ function localPlannerResponse(prompt: string, currentDashboard: DashboardConfig 
   });
 }
 
-async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardConfig) {
+async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
   const { signal, timeout } = timeoutSignal();
   const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -120,7 +122,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
         },
         {
           role: 'user',
-          content: buildDashboardUserPrompt(prompt, currentDashboard),
+          content: buildDashboardUserPrompt(prompt, currentDashboard, dataContext),
         },
       ],
       text: {
@@ -162,7 +164,7 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
   });
 }
 
-async function generateWithGemini(prompt: string, currentDashboard?: DashboardConfig) {
+async function generateWithGemini(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
   const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const { signal, timeout } = timeoutSignal();
   const geminiResponse = await fetch(
@@ -182,6 +184,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
                 text: `${buildDashboardSystemPrompt()}\n\nReturn a single JSON object with this shape: {"dashboard": {...}}.\n\n${buildDashboardUserPrompt(
                   prompt,
                   currentDashboard,
+                  dataContext,
                 )}`,
               },
             ],
@@ -265,14 +268,14 @@ export async function POST(request: Request) {
       if (!process.env.GEMINI_API_KEY) {
         return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because GEMINI_API_KEY is missing.');
       }
-      return await generateWithGemini(prompt, body.currentDashboard);
+      return await generateWithGemini(prompt, body.currentDashboard, body.dataContext);
     }
 
     if (provider === 'openai') {
       if (!process.env.OPENAI_API_KEY) {
         return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because OPENAI_API_KEY is missing.');
       }
-      return await generateWithOpenAI(prompt, body.currentDashboard);
+      return await generateWithOpenAI(prompt, body.currentDashboard, body.dataContext);
     }
 
     return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because no cloud AI provider key is configured.');

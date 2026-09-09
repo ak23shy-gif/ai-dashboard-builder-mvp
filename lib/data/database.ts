@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise';
 import { Client as PgClient } from 'pg';
 import sql from 'mssql';
-import { normaliseRawRows, type ImportedDataset } from '@/lib/data/importData';
+import { createDataContext, normaliseRawRows, type ImportedDataset } from '@/lib/data/importData';
 
 export type DatabaseProvider = 'postgres' | 'mysql' | 'sqlserver';
 
@@ -242,5 +242,14 @@ export async function previewDatabaseTable(
     processedRowCount: rows.length,
     isLimited: rawRows.length >= previewLimit,
     sourceType: 'database',
+    dataContext: createDataContext({
+      columns,
+      fileName: `${connection.database}.${schema}.${tableName}`,
+      mappedColumns,
+      processedRowCount: rows.length,
+      rawRowCount: rawRows.length,
+      rawRows,
+      sourceType: 'database',
+    }),
   };
 }

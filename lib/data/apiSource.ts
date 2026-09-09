@@ -1,4 +1,4 @@
-import { normaliseRawRows, type ImportedDataset } from '@/lib/data/importData';
+import { createDataContext, normaliseRawRows, type ImportedDataset } from '@/lib/data/importData';
 
 export type ApiSourceInput = {
   url: string;
@@ -119,5 +119,14 @@ export async function previewApiSource(input: ApiSourceInput): Promise<ImportedD
     processedRowCount: normalisedRows.length,
     isLimited: rows.length >= previewLimit,
     sourceType: 'api',
+    dataContext: createDataContext({
+      columns,
+      fileName: url,
+      mappedColumns,
+      processedRowCount: normalisedRows.length,
+      rawRowCount: rows.length,
+      rawRows: rows,
+      sourceType: 'api',
+    }),
   };
 }

@@ -1,6 +1,36 @@
 import * as XLSX from 'xlsx';
 import type { MarketingRow } from '@/lib/data/mockData';
 
+export type DataFieldRole = 'date' | 'dimension' | 'measure' | 'currency' | 'percentage' | 'identifier' | 'unknown';
+
+export type DataFieldProfile = {
+  name: string;
+  label: string;
+  role: DataFieldRole;
+  mappedTo?: keyof ImportedDataset['mappedColumns'];
+  distinctValues: number;
+  sampleValues: string[];
+};
+
+export type DashboardDataContext = {
+  sourceName: string;
+  sourceType: ImportedDataset['sourceType'];
+  rawRowCount: number;
+  processedRowCount: number;
+  fields: DataFieldProfile[];
+  metricSlots: {
+    leads?: string;
+    valuations?: string;
+    sessions?: string;
+    bookings?: string;
+  };
+  dimensionSlots: {
+    date?: string;
+    primary?: string;
+    secondary?: string;
+  };
+};
+
 export type ImportedDataset = {
   fileName: string;
   rows: MarketingRow[];
@@ -20,6 +50,7 @@ export type ImportedDataset = {
   processedRowCount: number;
   isLimited: boolean;
   sourceType: 'csv' | 'excel' | 'database' | 'api';
+  dataContext?: DashboardDataContext;
 };
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -121,6 +152,11 @@ function isCostLikeColumn(column: string | undefined) {
 
   const normalised = normaliseHeader(column);
   return /\b(cost|expense|spend|budget)\b/.test(normalised);
+}
+
+function isPercentageLikeColumn(column: string) {
+  const normalised = normaliseHeader(column);
+  return /\b(rate|percent|percentage|pct|conversion|margin|discount)\b/.test(normalised);
 }
 
 function findCategoricalColumn(rows: RawRow[], columns: string[], usedColumns: Array<string | undefined> = []) {
@@ -327,6 +363,94 @@ export function normaliseRawRows(rawRows: RawRow[]) {
       channel: channelColumn,
     },
   };
+}
+
+export function createDataContext({
+  columns,
+  fileName,
+  mappedColumns,
+  processedRowCount,
+  rawRowCount,
+  rawRows,
+  sourceType,
+}: {
+  columns: string[];
+  fileName: string;
+  mappedColumns: ImportedDataset['mappedColumns'];
+  processedRowCount: number;
+  rawRowCount: number;
+  rawRows: RawRow[];
+  sourceType: ImportedDataset['sourceType'];
+}): DashboardDataContext {
+  const mappedEntries = Object.entries(mappedColumns).reduce<Record<string, keyof ImportedDataset['mappedColumns']>>(
+    (entries, [slot, column]) => {
+      if (column) {
+        entries[column] = slot as keyof ImportedDataset['mappedColumns'];
+      }
+
+      return entries;
+    },
+    {},
+  );
+
+  return {
+    sourceName: fileName,
+    sourceType,
+    rawRowCount,
+    processedRowCount,
+    fields: columns.map((column) => {
+      const sampleValues = Array.from(
+        new Set(
+          rawRows
+            .map((row) => String(row[column] ?? '').trim())
+            .filter(Boolean)
+            .slice(0, 20),
+        ),
+      ).slice(0, 3);
+      const mappedTo = mappedEntries[column];
+      const role: DataFieldRole = isIdentifierColumn(column)
+        ? 'identifier'
+        : isDateLikeColumn(column) || ['date', 'month', 'year'].includes(String(mappedTo))
+          ? 'date'
+          : isPercentageLikeColumn(column)
+            ? 'percentage'
+            : isCurrencyLikeColumn(column)
+              ? 'currency'
+              : ['brand', 'channel'].includes(String(mappedTo))
+                ? 'dimension'
+                : findNumericColumns(rawRows, [column]).length
+                  ? 'measure'
+                  : 'unknown';
+
+      return {
+        name: column,
+        label: cleanFieldLabel(column),
+        role,
+        mappedTo,
+        distinctValues: distinctCount(rawRows, column),
+        sampleValues,
+      };
+    }),
+    metricSlots: {
+      leads: mappedColumns.leads,
+      valuations: mappedColumns.valuations,
+      sessions: mappedColumns.sessions,
+      bookings: mappedColumns.bookings,
+    },
+    dimensionSlots: {
+      date: mappedColumns.date || mappedColumns.month,
+      primary: mappedColumns.brand,
+      secondary: mappedColumns.channel,
+    },
+  };
+}
+
+function cleanFieldLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function parseCsvText(text: string): RawRow[] {
@@ -547,5 +671,14 @@ export async function importDashboardFile(file: File): Promise<ImportedDataset> 
     processedRowCount: rows.length,
     isLimited: rawRows.length >= maxImportedRows,
     sourceType: isExcel ? 'excel' : 'csv',
+    dataContext: createDataContext({
+      columns,
+      fileName: file.name,
+      mappedColumns,
+      processedRowCount: rows.length,
+      rawRowCount: rawRows.length,
+      rawRows: limitedRawRows,
+      sourceType: isExcel ? 'excel' : 'csv',
+    }),
   };
 }

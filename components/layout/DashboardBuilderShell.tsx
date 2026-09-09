@@ -7,6 +7,7 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 import { createDashboardFromImportedDataset } from '@/lib/ai/autoDashboard';
 import { defaultDashboardConfig, validateDashboardConfig } from '@/lib/ai/dashboardSchema';
 import { marketingData, type MarketingRow } from '@/lib/data/mockData';
+import type { DashboardDataContext } from '@/lib/data/importData';
 import type { DashboardComponentConfig, DashboardConfig } from '@/types/dashboard';
 
 type SavedDashboard = {
@@ -60,6 +61,7 @@ export function DashboardBuilderShell() {
   const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
   const [dataRows, setDataRows] = useState<MarketingRow[]>(marketingData);
   const [sourceLabel, setSourceLabel] = useState('Sample data');
+  const [dataContext, setDataContext] = useState<DashboardDataContext | undefined>();
   const [activeTheme, setActiveTheme] = useState<AppTheme>('light');
 
   const dashboardConfig = useMemo(
@@ -230,11 +232,13 @@ export function DashboardBuilderShell() {
           onUpdateComponent={handleUpdateComponent}
         />
         <AIAssistant
+          dataContext={dataContext}
           currentDashboard={dashboardConfig}
           onDataImported={(dataset) => {
             const generatedDashboard = createDashboardFromImportedDataset(dataset);
             setDataRows(dataset.rows);
             setSourceLabel(`${dataset.sourceType.toUpperCase()}: ${dataset.fileName}`);
+            setDataContext(dataset.dataContext);
             saveDashboard(generatedDashboard);
           }}
           onDashboardGenerated={(nextDashboard) => saveDashboard(nextDashboard)}
