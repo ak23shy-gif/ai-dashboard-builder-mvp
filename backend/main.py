@@ -561,6 +561,25 @@ def clean_projected_row(row, wanted, output_source_fields=None, output_aliases=N
     return {column_names([f])[0]: clean.get(column_names([f])[0]) for f in wanted if column_names([f])[0] in clean}
 
 
+def ga4_source_fields(dimensions):
+    return [field for field in dimensions if field in GA4_SOURCE_FIELDS]
+
+
+def ga4_api_dimensions(dimensions):
+    return [field for field in dimensions if field not in GA4_SOURCE_FIELDS]
+
+
+def source_value_row(email, resource_id, resource_name):
+    return {
+        "account_name": email,
+        "property_id": resource_id,
+        "property_name": resource_name,
+        "source_google_account": email,
+        "source_resource_id": resource_id,
+        "source_resource_name": resource_name,
+    }
+
+
 def parse_safe_date(value, fallback=None):
     raw = value or (fallback.isoformat() if isinstance(fallback, date) else fallback)
     try:
@@ -827,7 +846,7 @@ async def validate_query(q, request, discovery_cache=None, connector_cache=None)
         q.dimensions = meta["dimensions"]
     if q.product != "api" and meta["metrics"] and not q.metrics:
         raise HTTPException(422, "Select at least one metric.")
-    if q.product == "ga4" and (len(q.dimensions) > 9 or len(q.metrics) > 10):
+    if q.product == "ga4" and (len(ga4_api_dimensions(q.dimensions)) > 9 or len(q.metrics) > 10):
         raise HTTPException(422, "GA4 allows up to 9 dimensions and 10 metrics per report.")
     if q.product == "search" and q.options.get("search_type", "web") not in ("web", "image", "video", "news", "discover", "googleNews"):
         raise HTTPException(422, "Invalid search type.")
@@ -839,7 +858,11 @@ async def validate_query(q, request, discovery_cache=None, connector_cache=None)
 
 @app.post("/jobs")
 async def extract(q: Query, request: Request):
-    uid, con, _ = await validate_query(q, request)
+    uid, con, resource_meta = await validate_query(q, request)
+    display_dimensions = list(q.dimensions)
+    api_query = q.model_copy(deep=True)
+    if q.product == "ga4":
+        api_query.dimensions = ga4_api_dimensions(q.dimensions)
     start = date.fromisoformat(q.start)
     async with job_lock:
         with db() as c:
@@ -849,12 +872,13 @@ async def extract(q: Query, request: Request):
                 saved = c.execute("SELECT end_date FROM checkpoints WHERE id=?", (checkpoint_key(uid, q),)).fetchone()
                 if saved:
                     q.start = max(start, date.fromisoformat(saved[0])+timedelta(days=1)).isoformat()
+                    api_query.start = q.start
                     if q.start > q.end:
                         raise HTTPException(409, "Already extracted through this end date. Choose a later end date or turn off incremental mode.")
             jid = ("api_" if q.product == "api" else "") + secrets.token_hex(16)
-            columns = column_names(q.dimensions + q.metrics)
+            columns = column_names(display_dimensions + q.metrics)
             c.execute("INSERT INTO jobs(id,owner,status,spec,columns) VALUES (?,?,'queued',?,?)", (jid, uid, q.model_dump_json(), json.dumps(columns)))
-        task = asyncio.create_task(run_job(jid, uid, q, con))
+        task = asyncio.create_task(run_job(jid, uid, api_query, con, columns, display_dimensions, resource_meta))
         tasks.add(task)
         task.add_done_callback(tasks.discard)
     return {"id": jid}
@@ -884,6 +908,8 @@ async def batch_extract(q: BatchQuery, request: Request):
         spec = q.model_dump(exclude={"targets", "resource", "connection_id"})
         source_query = Query(**{**spec, "resource": target.resource, "connection_id": target.connection_id, "options": {**q.options, **target.options}})
         _, con, resource_meta = await validate_query(source_query, request, discoveries, connectors)
+        if source_query.product == "ga4":
+            source_query.dimensions = ga4_api_dimensions(source_query.dimensions)
         token = read_token(uid, target.connection_id) if q.product != "api" else None
         prepared.append((source_query, con, resource_meta.get("name", target.resource), token.get("email", target.connection_id) if token else "Local API"))
     async with job_lock:
@@ -964,13 +990,22 @@ async def run_batch(jid, uid, prepared, columns, internal_columns=None):
             c.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", (failure_message(exc), jid))
 
 
-async def run_job(jid, uid, q, con):
+async def run_job(jid, uid, q, con, display_columns=None, display_dimensions=None, resource_meta=None):
+    display_columns = display_columns or []
+    display_dimensions = display_dimensions or list(q.dimensions)
+    source_fields = ga4_source_fields(display_dimensions) if q.product == "ga4" else []
+    token = read_token(uid, q.connection_id or uid) if q.product != "api" else None
+    source_values = source_value_row(token.get("email", q.connection_id or uid) if token else q.connection_id or uid, q.resource, (resource_meta or {}).get("name", q.resource)) if q.product != "api" else {}
     try:
         with db() as c:
             c.execute("UPDATE jobs SET status='running' WHERE id=?", (jid,))
-        columns = []
+        columns = display_columns
         async for batch in con.extract(q):
-            columns = insert_rows(jid, batch, columns)
+            if source_fields:
+                rows = [clean_projected_row({**row, **source_values}, display_dimensions + q.metrics, source_fields) for row in batch]
+            else:
+                rows = batch
+            columns = insert_rows(jid, rows, columns)
             await asyncio.sleep(0)
         with db() as c:
             c.execute("UPDATE jobs SET status='complete' WHERE id=?", (jid,))
