@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DashForge AI - AI Dashboard Builder',
-  description: 'AI-native dashboard builder for CSV, Excel, API and database-backed analytics.',
+  title: 'Google API Data Extractor',
+  description: 'Google data extraction app for Power BI-ready API exports.',
 };
 
 export default function RootLayout({
@@ -17,4 +17,3 @@ export default function RootLayout({
     </html>
   );
 }
-
