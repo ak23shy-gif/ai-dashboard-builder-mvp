@@ -65,8 +65,8 @@ export function ExtractionApp() {
   const [resourceSearch, setResourceSearch] = useState('');
   const [accountErrors, setAccountErrors] = useState<{ account: Account; message: string }[]>([]);
   const [fieldLoading, setFieldLoading] = useState(false);
-  const [dimensions, setDimensions] = useState(['date', 'country']);
-  const [metrics, setMetrics] = useState(['sessions', 'activeUsers']);
+  const [dimensions, setDimensions] = useState<string[]>([]);
+  const [metrics, setMetrics] = useState<string[]>([]);
   const [fields, setFields] = useState<Fields>({});
   const [sourceFields, setSourceFields] = useState<Record<string, Fields>>({});
   const [sourceOptions, setSourceOptions] = useState<Record<string, Record<string, string>>>({});
@@ -136,18 +136,16 @@ export function ExtractionApp() {
     request<Status>('/status').then(setStatus).catch(e => setError(e.message));
     const authError = new URLSearchParams(window.location.search).get('auth_error');
     if (authError) { setError(authError); window.history.replaceState({}, '', '/'); }
-    const saved = sessionStorage.getItem('extract-product');
-    if (saved && fallback.some(x => x.id === saved)) setProduct(saved);
   }, []);
   useEffect(() => {
     if (!status.connected || queryKey) return;
     request<{ api_key: string }>('/query/key').then(r => setQueryKey(r.api_key)).catch(() => {});
   }, [status.connected, queryKey]);
   useEffect(() => {
-    setDimensions(p.defaults); setMetrics(p.defaultMetrics); setFields({}); setOptions({}); setSelectedKeys([]); setResources([]); setIncremental(false); setResourceError(''); setFieldSearch(''); setResourceSearch(''); setAccountErrors([]); setSourceFields({}); setSourceOptions({}); setFilters('');
+    setDimensions([]); setMetrics([]); setFields({}); setOptions({}); setSelectedKeys([]); setResources([]); setIncremental(false); setResourceError(''); setFieldSearch(''); setResourceSearch(''); setAccountErrors([]); setSourceFields({}); setSourceOptions({}); setFilters('');
     if (product === 'api') {
       const local = { id: 'endpoint', name: apiOptions.url || 'Pasted API endpoint', connection_id: 'api', email: 'Local API' };
-      setResources([local]); setSelectedKeys([resourceKey(local)]); setLoading(false);
+      setResources([local]); setLoading(false);
       return;
     }
     if (!status.connected) return;
@@ -165,9 +163,6 @@ export function ExtractionApp() {
       const all = results.flatMap(result => result.rows);
       setResources(all);
       setAccountErrors(results.filter(result => result.message).map(({ account, message }) => ({ account, message })));
-      let restored: string[] = [];
-      try { restored = JSON.parse(sessionStorage.getItem(`extract-resources-${product}`) || '[]'); } catch { /* Start with no restored selection. */ }
-      setSelectedKeys(restored.filter(key => all.some(r => resourceKey(r) === key)).slice(0, 100));
     }).catch(e => { if (active) setResourceError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [product, status.connected, status.products, status.accounts, refresh]);
