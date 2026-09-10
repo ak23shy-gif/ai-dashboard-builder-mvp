@@ -29,7 +29,8 @@ from .accounts import cipher, save_token, read_token, list_accounts, remove_acco
 load_dotenv(Path(__file__).parent / ".env")
 ORIGIN = os.getenv("APP_ORIGIN", "http://127.0.0.1:3001").rstrip("/")
 CORS_ORIGINS = sorted({o.rstrip("/") for o in (os.getenv("CORS_ORIGINS", "") + "," + ORIGIN + ",http://127.0.0.1:3001,http://localhost:3001,https://google-api-data-extractor.vercel.app").split(",") if o.strip()})
-REDIRECT = os.getenv("GOOGLE_REDIRECT_URI", ORIGIN+"/extract-api/auth/callback")
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
+REDIRECT = os.getenv("GOOGLE_REDIRECT_URI", "").rstrip("/")
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("BACKEND_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",") if h.strip()]
 sessions = {}
 oauth_states = {}
@@ -38,6 +39,18 @@ refresh_lock = asyncio.Lock()
 job_lock = asyncio.Lock()
 
 
+
+def oauth_redirect_uri(request):
+    if REDIRECT:
+        return REDIRECT
+    if BACKEND_PUBLIC_URL:
+        return BACKEND_PUBLIC_URL + "/auth/callback"
+    return str(request.url_for("callback"))
+
+
+def cookie_settings(max_age):
+    cross_site = ORIGIN.startswith("https:")
+    return {"httponly": True, "samesite": "none" if cross_site else "lax", "max_age": max_age, "secure": cross_site}
 def get_query_key():
     return get_workspace_query_key("local-api")
 
@@ -240,13 +253,14 @@ async def connect(request: Request, product: str = "ga4", connection_id: str = "
     if connection_id and not existing:
         raise HTTPException(403, "This Google account is not connected to your workspace.")
     save_oauth_state(state, dict(verifier=verifier, browser=browser, expires=time.time()+600, workspace=workspace, connection=connection_id))
-    query = {"client_id": os.getenv("GOOGLE_CLIENT_ID"), "redirect_uri": REDIRECT, "response_type": "code", "scope": " ".join(["openid", "email"] + CATALOG[product]["scopes"]), "state": state, "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true", "code_challenge": base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode(), "code_challenge_method": "S256"}
+    redirect_uri = oauth_redirect_uri(request)
+    query = {"client_id": os.getenv("GOOGLE_CLIENT_ID"), "redirect_uri": redirect_uri, "response_type": "code", "scope": " ".join(["openid", "email"] + CATALOG[product]["scopes"]), "state": state, "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true", "code_challenge": base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode(), "code_challenge_method": "S256"}
     if existing:
         query["login_hint"] = existing.get("email", connection_id)
     else:
         query["prompt"] = "consent select_account"
     response = RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?"+urlencode(query))
-    response.set_cookie("extract_oauth", browser, httponly=True, samesite="lax", max_age=600, secure=ORIGIN.startswith("https:"))
+    response.set_cookie("extract_oauth", browser, **cookie_settings(600))
     return response
 
 
@@ -259,7 +273,7 @@ async def callback(request: Request, state: str = "", code: str = "", error: str
     if error or not code:
         return RedirectResponse(ORIGIN+"/?auth_error=Google+connection+was+cancelled")
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post("https://oauth2.googleapis.com/token", data={"client_id": os.getenv("GOOGLE_CLIENT_ID"), "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"), "redirect_uri": REDIRECT, "code": code, "code_verifier": saved["verifier"], "grant_type": "authorization_code"})
+        r = await client.post("https://oauth2.googleapis.com/token", data={"client_id": os.getenv("GOOGLE_CLIENT_ID"), "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"), "redirect_uri": oauth_redirect_uri(request), "code": code, "code_verifier": saved["verifier"], "grant_type": "authorization_code"})
         if r.status_code != 200:
             raise HTTPException(400, "Google authorization failed. Connect again.")
         token = r.json()
@@ -279,7 +293,7 @@ async def callback(request: Request, state: str = "", code: str = "", error: str
         save_token(token, workspace)
     sid = create_session(workspace)
     response = RedirectResponse(ORIGIN)
-    response.set_cookie("extract_session", sid, httponly=True, samesite="lax", max_age=86400*7, secure=ORIGIN.startswith("https:"))
+    response.set_cookie("extract_session", sid, **cookie_settings(86400*7))
     response.delete_cookie("extract_oauth")
     return response
 

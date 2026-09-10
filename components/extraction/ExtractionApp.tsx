@@ -38,7 +38,7 @@ const urlWithFormat = (value: string, format: 'csv' | 'json') => {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(`${publicApiBase}${path}`, init);
+    r = await fetch(${publicApiBase}, { ...init, credentials: 'include' });
   } catch {
     throw new Error('Could not reach the deployed extraction backend. Check Render status and try again.');
   }
@@ -219,7 +219,7 @@ export function ExtractionApp() {
     if (!status.configured) { setSetup(true); return; }
     sessionStorage.setItem('extract-product', product);
     sessionStorage.setItem(`extract-resources-${product}`, JSON.stringify(selectedKeys));
-    window.location.href = '/extract-api/auth/connect?product=' + product + (connectionId ? '&connection_id=' + encodeURIComponent(connectionId) : '');
+    window.location.href = `${publicApiBase}/auth/connect?product=${encodeURIComponent(product)}${connectionId ? '&connection_id=' + encodeURIComponent(connectionId) : ''}`;
   }
   async function extract() {
     setSubmitting(true); setError('');
