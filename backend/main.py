@@ -41,10 +41,10 @@ job_lock = asyncio.Lock()
 
 
 def oauth_redirect_uri(request):
-    if REDIRECT:
-        return REDIRECT
     if BACKEND_PUBLIC_URL:
         return BACKEND_PUBLIC_URL + "/auth/callback"
+    if REDIRECT and "/extract-api/" not in REDIRECT:
+        return REDIRECT
     return str(request.url_for("callback"))
 
 
