@@ -7,6 +7,7 @@ import random
 import re
 import secrets
 import time
+import traceback
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from functools import partial
@@ -193,7 +194,11 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 async def local_security(request, call_next):
     if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin") != ORIGIN:
         return JSONResponse({"detail": "Untrusted request origin."}, 403)
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        print(traceback.format_exc(), flush=True)
+        return JSONResponse({"detail": f"{exc.__class__.__name__}: {exc}"}, status_code=500)
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
