@@ -242,11 +242,19 @@ export function ExtractionApp() {
     if (!url) return;
     setSubmitting(true); setError('');
     try {
-      const preview = await request<{ columns: string[]; rows: Record<string, unknown>[]; count: number }>('/query/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
-      const rows = preview.rows;
-      const columns = preview.columns;
-      setOffset(0);
-      setJob({ id: 'direct-query', status: 'complete', count: preview.count, created: new Date().toISOString(), columns, rows: rows.slice(0, 50), spec: { product, resource: 'direct-query', start, end, dimensions, metrics, incremental: false, options: { url } } });
+      const parsed = new URL(url, window.location.origin);
+      const isExtractorQuery = parsed.pathname.endsWith('/query/' + product) || parsed.pathname.includes('/query/');
+      if (isExtractorQuery) {
+        const r = await request<{ id: string }>('/query/extract', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+        setOffset(0);
+        setJob({ id: r.id, status: 'queued', count: 0, created: '', columns: [], rows: [], spec: { product, resource: 'query-url', start, end, dimensions, metrics, incremental: false, options: { url } } });
+      } else {
+        const preview = await request<{ columns: string[]; rows: Record<string, unknown>[]; count: number }>('/query/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+        const rows = preview.rows;
+        const columns = preview.columns;
+        setOffset(0);
+        setJob({ id: 'direct-query', status: 'complete', count: preview.count, created: new Date().toISOString(), columns, rows: rows.slice(0, 50), spec: { product, resource: 'direct-query', start, end, dimensions, metrics, incremental: false, options: { url } } });
+      }
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (e) { setError((e as Error).message); }
     finally { setSubmitting(false); }

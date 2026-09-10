@@ -526,3 +526,26 @@ def test_apply_query_uses_ga4_ui_report_planner(client, monkeypatch):
     assert seen[0][2] == ["year", "month", "sessionDefaultChannelGroup"]
     assert seen[0][3] == ["sessions", "activeUsers"]
     assert seen[0][4]["chunk"] == "monthly"
+
+
+def test_query_extract_creates_exportable_job(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    class Fake:
+        async def discover(self): return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid): return {"dimensions": ["date"], "metrics": ["sessions"]}
+        async def extract(self, q):
+            yield [{"date": "2026-08-01", "sessions": 12}, {"date": "2026-08-02", "sessions": 14}]
+    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    url = "https://google-api-data-extractor-backend.onrender.com/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&dimensions=date&metrics=sessions&date_from=2026-08-01&date_to=2026-08-02"
+    r = client.post("/query/extract", json={"url": url}, headers={"Origin": main.ORIGIN})
+    assert r.status_code == 200, r.text
+    jid = r.json()["id"]
+    for _ in range(100):
+        job = client.get("/jobs/"+jid).json()
+        if job["status"] == "complete":
+            break
+        time.sleep(.01)
+    assert job["count"] == 2
+    assert client.get(f"/jobs/{jid}/export?format=json").json() == [{"date": "2026-08-01", "sessions": 12}, {"date": "2026-08-02", "sessions": 14}]

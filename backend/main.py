@@ -431,6 +431,54 @@ class ApplyQueryRequest(BaseModel):
     url: str = Field(min_length=1, max_length=20000)
 
 
+def spec_from_query_url(raw_url):
+    target = normalize_pasted_url(raw_url)
+    parsed_std = urlparse(target)
+    if parsed_std.scheme not in ("http", "https"):
+        raise HTTPException(422, "Enter a valid HTTP or HTTPS query URL.")
+    if not parsed_std.path.startswith("/query/"):
+        return None
+    product = parsed_std.path.rsplit("/", 1)[-1]
+    if product not in CONNECTORS:
+        raise HTTPException(404, "Unknown connector.")
+    qs = {k: v[-1] for k, v in parse_qs(parsed_std.query, keep_blank_values=True).items()}
+    workspace = qs.get("workspace", "local-api" if product == "api" else "")
+    supplied = qs.get("api_key", "")
+    if not supplied or not secrets.compare_digest(supplied, get_workspace_query_key(workspace)):
+        raise HTTPException(401, "Valid api_key is required.")
+    resources = split_csv(qs.get("resources") or qs.get("resource", ""))
+    targets = parse_targets(qs.get("targets", ""))
+    if product != "api" and not resources and not targets:
+        raise HTTPException(422, "Add resource, resources, or targets to the query.")
+    if targets and not resources:
+        resources = [target["resource"] for target in targets]
+    options = {k.removeprefix("option_"): v for k, v in qs.items() if k.startswith("option_")}
+    if qs.get("filters"):
+        options["filters"] = qs["filters"]
+    for key in ("chunk", "chunk_days", "chunk_months"):
+        if qs.get(key):
+            options[key] = qs[key]
+    if product == "api":
+        options.update({k: qs[k] for k in ("url", "method", "headers", "body", "data_path", "limit") if k in qs})
+        resources = ["endpoint"]
+        if not targets:
+            targets = [{"connection_id": "api", "resource": "endpoint", "options": options}]
+    start, end = apply_exclude_recent_days(qs.get("date_from") or qs.get("start"), qs.get("date_to") or qs.get("end"), qs)
+    fields_param = split_csv(qs.get("fields", ""))
+    dimensions_param = split_csv(qs.get("dimensions", ""))
+    metrics_param = split_csv(qs.get("metrics", ""))
+    ga4_plan = None
+    ga4_wanted_fields = []
+    if product == "ga4" and (qs.get("ui_report") or qs.get("report")):
+        ga4_wanted_fields = fields_param or dimensions_param + metrics_param
+        ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, qs.get("ui_report") or qs.get("report") or "")
+        fields_param = []
+        dimensions_param = ga4_plan["dimensions"]
+        metrics_param = ga4_plan["metrics"]
+    spec = {"product": product, "workspace": workspace, "connection_id": qs.get("connection_id", ""), "resources": resources, "targets": targets, "start": start, "end": end, "fields": fields_param, "dimensions": dimensions_param, "metrics": metrics_param, "options": options}
+    return spec, ga4_plan, ga4_wanted_fields
+
+
 @app.post("/query/apply")
 async def apply_direct_query(payload: ApplyQueryRequest):
     target = normalize_pasted_url(payload.url)
@@ -438,45 +486,9 @@ async def apply_direct_query(payload: ApplyQueryRequest):
     parsed = httpx.URL(target)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(422, "Enter a valid HTTP or HTTPS query URL.")
-    if parsed_std.path.startswith("/query/"):
-        product = parsed_std.path.rsplit("/", 1)[-1]
-        if product not in CONNECTORS:
-            raise HTTPException(404, "Unknown connector.")
-        qs = {k: v[-1] for k, v in parse_qs(parsed_std.query, keep_blank_values=True).items()}
-        workspace = qs.get("workspace", "local-api" if product == "api" else "")
-        supplied = qs.get("api_key", "")
-        if not supplied or not secrets.compare_digest(supplied, get_workspace_query_key(workspace)):
-            raise HTTPException(401, "Valid api_key is required.")
-        resources = split_csv(qs.get("resources") or qs.get("resource", ""))
-        targets = parse_targets(qs.get("targets", ""))
-        if product != "api" and not resources and not targets:
-            raise HTTPException(422, "Add resource, resources, or targets to the query.")
-        if targets and not resources:
-            resources = [target["resource"] for target in targets]
-        options = {k.removeprefix("option_"): v for k, v in qs.items() if k.startswith("option_")}
-        if qs.get("filters"):
-            options["filters"] = qs["filters"]
-        for key in ("chunk", "chunk_days", "chunk_months"):
-            if qs.get(key):
-                options[key] = qs[key]
-        if product == "api":
-            options.update({k: qs[k] for k in ("url", "method", "headers", "body", "data_path", "limit") if k in qs})
-            resources = ["endpoint"]
-            if not targets:
-                targets = [{"connection_id": "api", "resource": "endpoint", "options": options}]
-        start, end = apply_exclude_recent_days(qs.get("date_from") or qs.get("start"), qs.get("date_to") or qs.get("end"), qs)
-        fields_param = split_csv(qs.get("fields", ""))
-        dimensions_param = split_csv(qs.get("dimensions", ""))
-        metrics_param = split_csv(qs.get("metrics", ""))
-        ga4_plan = None
-        ga4_wanted_fields = []
-        if product == "ga4" and (qs.get("ui_report") or qs.get("report")):
-            ga4_wanted_fields = fields_param or dimensions_param + metrics_param
-            ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, qs.get("ui_report") or qs.get("report") or "")
-            fields_param = []
-            dimensions_param = ga4_plan["dimensions"]
-            metrics_param = ga4_plan["metrics"]
-        spec = {"product": product, "workspace": workspace, "connection_id": qs.get("connection_id", ""), "resources": resources, "targets": targets, "start": start, "end": end, "fields": fields_param, "dimensions": dimensions_param, "metrics": metrics_param, "options": options}
+    parsed_spec = spec_from_query_url(target) if parsed_std.path.startswith("/query/") else None
+    if parsed_spec:
+        spec, ga4_plan, ga4_wanted_fields = parsed_spec
         rows = []
         async for row in query_rows(spec):
             if ga4_plan:
@@ -499,6 +511,60 @@ async def apply_direct_query(payload: ApplyQueryRequest):
     columns = list(dict.fromkeys(key for row in rows for key in row))
     clean_columns = column_names(columns)
     return {"columns": clean_columns, "rows": [dict(zip(column_names(row.keys()), row.values())) for row in rows], "count": len(rows)}
+
+
+@app.post("/query/extract")
+async def extract_direct_query(payload: ApplyQueryRequest, request: Request):
+    parsed = spec_from_query_url(payload.url)
+    if not parsed:
+        raise HTTPException(422, "Only this app's /query URLs can be extracted as large export jobs.")
+    spec, ga4_plan, ga4_wanted_fields = parsed
+    if spec["product"] != "api":
+        session = read_session(request.cookies.get("extract_session")) or {}
+        if session.get("owner") and session["owner"] != spec["workspace"]:
+            raise HTTPException(403, "This query belongs to a different Google workspace.")
+    owner_id = spec["workspace"] if spec["product"] != "api" else "local-api"
+    jid = ("api_" if spec["product"] == "api" else "query_") + secrets.token_hex(16)
+    display_spec = {
+        "product": spec["product"],
+        "resource": "query-url",
+        "start": spec["start"],
+        "end": spec["end"],
+        "dimensions": spec["fields"] or spec["dimensions"],
+        "metrics": spec["metrics"],
+        "incremental": False,
+        "options": {"url": normalize_pasted_url(payload.url)},
+    }
+    with db() as c:
+        c.execute("INSERT INTO jobs(id,owner,status,spec,columns) VALUES (?,?,'queued',?,?)", (jid, owner_id, json.dumps(display_spec), "[]"))
+    task = asyncio.create_task(run_direct_query_job(jid, spec, ga4_plan, ga4_wanted_fields))
+    tasks.add(task)
+    task.add_done_callback(tasks.discard)
+    return {"id": jid}
+
+
+async def run_direct_query_job(jid, spec, ga4_plan=None, ga4_wanted_fields=None):
+    try:
+        with db() as c:
+            c.execute("UPDATE jobs SET status='running' WHERE id=?", (jid,))
+        columns = []
+        async for row in query_rows(spec):
+            if ga4_plan:
+                wanted = [f for f in ga4_wanted_fields if f not in ga4_plan["ignored_fields"]]
+                row = clean_projected_row(row, wanted, ga4_plan["output_source_fields"], ga4_plan["output_aliases"])
+            else:
+                row = dict(zip(column_names(row.keys()), row.values()))
+            columns = insert_rows(jid, [row], columns, union=True)
+            await asyncio.sleep(0)
+        with db() as c:
+            c.execute("UPDATE jobs SET status='complete' WHERE id=?", (jid,))
+    except asyncio.CancelledError:
+        with db() as c:
+            c.execute("UPDATE jobs SET status='failed',error='Extraction interrupted. Run it again.' WHERE id=?", (jid,))
+        raise
+    except Exception as exc:
+        with db() as c:
+            c.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", (failure_message(exc), jid))
 
 
 
