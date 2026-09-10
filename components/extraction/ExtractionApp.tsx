@@ -38,7 +38,7 @@ const urlWithFormat = (value: string, format: 'csv' | 'json') => {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(${publicApiBase}, { ...init, credentials: 'include' });
+    r = await fetch(`${publicApiBase}${path}`, { ...init, credentials: 'include' });
   } catch {
     throw new Error('Could not reach the deployed extraction backend. Check Render status and try again.');
   }
