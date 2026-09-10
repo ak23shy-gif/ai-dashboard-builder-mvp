@@ -934,7 +934,7 @@ async def batch_extract(q: BatchQuery, request: Request):
                 if source_query.incremental:
                     saved = c.execute("SELECT end_date FROM checkpoints WHERE id=?", (checkpoint_key(uid, source_query),)).fetchone()
                     if saved:
-                        source_query.start = max(source_query.start, (date.fromisoformat(saved[0])+timedelta(days=1)).isoformat())
+                        source_query.start = max(source_query.start, (date.fromisoformat(row_value(saved, "end_date", 0))+timedelta(days=1)).isoformat())
                         if source_query.start > source_query.end:
                             state = "skipped"
                 c.execute("INSERT INTO job_sources(job,position,connection_id,email,resource,name,start_date,end_date,status) VALUES (?,?,?,?,?,?,?,?,?)", (jid, index, source_query.connection_id, email, source_query.resource, name, source_query.start, source_query.end, state))
