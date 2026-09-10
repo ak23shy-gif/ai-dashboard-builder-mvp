@@ -33,6 +33,19 @@ def job_record(jid="job1", status="complete", owner="user1", columns=None):
         c.execute("INSERT INTO jobs(id,owner,status,spec,columns) VALUES (?,?,?,?,?)", (jid, owner, status, json.dumps({"product": "ga4"}), json.dumps(columns or [])))
 
 
+def test_postgres_sql_translation_escapes_literal_percent():
+    class FakeCursor:
+        def execute(self, sql, params):
+            self.sql = sql
+            self.params = params
+
+    raw = FakeCursor()
+    cur = storage.PostgresCursor(raw)
+    cur.execute("SELECT id,value FROM secrets WHERE id LIKE 'google:%' AND value=?", (b"token",))
+    assert raw.sql == "SELECT id,value FROM secrets WHERE id LIKE 'google:%%' AND value=%s"
+    assert raw.params == (b"token",)
+
+
 def test_auth_and_origin_boundaries(client):
     assert client.get("/jobs").status_code == 401
     assert client.post("/jobs", json={}).status_code == 403

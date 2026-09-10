@@ -17,7 +17,7 @@ class PostgresCursor:
         sql = sql.replace("INSERT OR IGNORE INTO rows(job,data,source) VALUES (?,?,?)", "INSERT INTO rows(job,data,source) VALUES (?,?,?) ON CONFLICT DO NOTHING")
         sql = sql.replace("INSERT OR IGNORE INTO secrets VALUES (?,?)", "INSERT INTO secrets(id,value) VALUES (?,?) ON CONFLICT DO NOTHING")
         sql = sql.replace("INSERT OR REPLACE INTO secrets VALUES (?,?)", "INSERT INTO secrets(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value")
-        return sql.replace("?", "%s")
+        return sql.replace("%", "%%").replace("?", "%s")
 
     def execute(self, sql, params=()):
         self.cursor.execute(self._sql(sql), params)
