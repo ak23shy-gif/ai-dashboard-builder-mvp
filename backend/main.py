@@ -245,7 +245,8 @@ async def connect(request: Request, product: str = "ga4", connection_id: str = "
 @app.get("/auth/callback")
 async def callback(request: Request, state: str = "", code: str = "", error: str = ""):
     saved = pop_oauth_state(state)
-    if not saved or saved["expires"] < time.time() or not secrets.compare_digest(saved["browser"], request.cookies.get("extract_oauth", "")):
+    browser_cookie = request.cookies.get("extract_oauth", "")
+    if not saved or saved["expires"] < time.time() or (browser_cookie and not secrets.compare_digest(saved["browser"], browser_cookie)):
         raise HTTPException(400, "Invalid or expired OAuth state. Connect Google again.")
     if error or not code:
         return RedirectResponse(ORIGIN+"/?auth_error=Google+connection+was+cancelled")
