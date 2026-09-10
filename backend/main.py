@@ -208,7 +208,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 @app.middleware("http")
 async def local_security(request, call_next):
-    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin") and request.headers.get("origin").rstrip("/") not in CORS_ORIGINS:
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin", "").rstrip("/") not in CORS_ORIGINS:
         return JSONResponse({"detail": "Untrusted request origin."}, 403)
     try:
         response = await call_next(request)
@@ -681,8 +681,9 @@ def parse_safe_date(value, fallback=None):
 
 
 def apply_exclude_recent_days(start_value, end_value, params_or_options):
-    start = parse_safe_date(start_value, date.today())
-    end = parse_safe_date(end_value, date.today())
+    today = date.today()
+    start = parse_safe_date(start_value, today)
+    end = min(parse_safe_date(end_value, today), today)
     raw = params_or_options.get("exclude_recent_days") or params_or_options.get("freshness_lag_days")
     if str(params_or_options.get("data_freshness", "")).lower() in ("final", "stable", "ui") and not raw:
         raw = "2"
@@ -691,7 +692,7 @@ def apply_exclude_recent_days(start_value, end_value, params_or_options):
             lag = max(0, min(int(raw), 30))
         except ValueError:
             raise HTTPException(422, "exclude_recent_days must be a number.")
-        end = min(end, date.today() - timedelta(days=lag))
+        end = min(end, today - timedelta(days=lag))
     if start > end:
         raise HTTPException(422, "Date range ends before it starts after freshness delay.")
     return start.isoformat(), end.isoformat()

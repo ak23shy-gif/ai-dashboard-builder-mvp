@@ -565,3 +565,14 @@ def test_query_extract_creates_exportable_job(client, monkeypatch):
         time.sleep(.01)
     assert job["count"] == 2
     assert client.get(f"/jobs/{jid}/export?format=json").json() == [{"date": "2026-08-01", "sessions": 12}, {"date": "2026-08-02", "sessions": 14}]
+
+
+def test_query_caps_future_date_to_today(monkeypatch):
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 10)
+    monkeypatch.setattr(main, "date", FixedDate)
+    start, end = main.apply_exclude_recent_days("2025-01-01", "2099-12-31", {})
+    assert start == "2025-01-01"
+    assert end == "2026-09-10"
