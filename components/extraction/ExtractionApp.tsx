@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, Braces, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Copy, Database, ExternalLink, FileJson, FileSpreadsheet, FolderOpen, History, Layers3, Link2, Loader2, LockKeyhole, Play, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Unplug, X } from 'lucide-react';
 import './extraction.css';
@@ -23,7 +23,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const yesterday = () => iso(new Date(Date.now() - 86400000));
 const monthAgo = () => iso(new Date(Date.now() - 30 * 86400000));
 const label = (s: string) => s.replace(/^(metrics|segments|campaign)\./, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
-const publicApiBase = process.env.NEXT_PUBLIC_EXTRACT_API_BASE_URL?.replace(/\/$/, '');
+const publicApiBase = (process.env.NEXT_PUBLIC_EXTRACT_API_BASE_URL || 'https://google-api-data-extractor-backend.onrender.com').replace(/\/$/, '');
 const cleanEditableUrl = (value: string) => value.trim().replace(/\\_/g, '_').replace(/\\&/g, '&').replace(/^\[[^\]]+\]\(([\s\S]*)\)$/, '$1').trim();
 const urlWithFormat = (value: string, format: 'csv' | 'json') => {
   const cleaned = cleanEditableUrl(value);
@@ -38,7 +38,7 @@ const urlWithFormat = (value: string, format: 'csv' | 'json') => {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
-    r = await fetch('/extract-api' + path, init);
+    r = await fetch(`${publicApiBase}${path}`, init);
   } catch {
     throw new Error('Could not reach the deployed extraction backend. Check Render status and try again.');
   }
@@ -54,7 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function ProductIcon({ id, small = false }: { id: string; small?: boolean }) {
-  return <span className={`gx-product-icon gx-${id} ${small ? 'gx-small' : ''}`} aria-hidden="true">{id === 'ga4' ? <span className="gx-bars"><i /><i /><i /></span> : id === 'ads' ? <span className="gx-ads-symbol">A</span> : id === 'youtube' ? <span className="gx-youtube-symbol">▶</span> : id === 'search' ? <Search size={small ? 19 : 25} /> : id === 'business' ? <span>▥</span> : id === 'drive' ? <FolderOpen size={small ? 19 : 25} /> : id === 'api' ? <Braces size={small ? 19 : 25} /> : <FileSpreadsheet size={small ? 19 : 25} />}</span>;
+  return <span className={`gx-product-icon gx-${id} ${small ? 'gx-small' : ''}`} aria-hidden="true">{id === 'ga4' ? <span className="gx-bars"><i /><i /><i /></span> : id === 'ads' ? <span className="gx-ads-symbol">A</span> : id === 'youtube' ? <span className="gx-youtube-symbol">?</span> : id === 'search' ? <Search size={small ? 19 : 25} /> : id === 'business' ? <span>?</span> : id === 'drive' ? <FolderOpen size={small ? 19 : 25} /> : id === 'api' ? <Braces size={small ? 19 : 25} /> : <FileSpreadsheet size={small ? 19 : 25} />}</span>;
 }
 
 export function ExtractionApp() {
@@ -334,4 +334,5 @@ export function ExtractionApp() {
     {setup && <div className="gx-modal-backdrop" onClick={() => setSetup(false)}><section className="gx-modal" role="dialog" aria-modal="true" aria-labelledby="setup-title" onClick={e => e.stopPropagation()}><button autoFocus className="gx-modal-close" aria-label="Close setup guide" onClick={() => setSetup(false)}><X size={20} /></button><div className="gx-eyebrow">ONE-TIME LOCAL SETUP</div><h2 id="setup-title">Connect your Google Cloud project</h2><p>Google requires your own OAuth client for this personal app. Once configured, the Connect Google button discovers resources you already have permission to access.</p><ol><li>Create a Google Cloud project and enable the APIs for the products you want to extract.</li><li>Configure the OAuth consent screen. Add your Google email as a test user if the app is in Testing.</li><li>Create an OAuth client of type <strong>Web application</strong>. Set this exact authorized redirect URI:<code>http://127.0.0.1:3001/extract-api/auth/callback</code></li><li>Copy <code>backend/.env.example</code> to <code>backend/.env</code>. Set your client ID, client secret, and a generated encryption key. Keep these on the server.</li><li>Install and start the Python backend:<code>python -m pip install -r backend/requirements.txt<br />python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000</code></li><li>Start the frontend with <code>npm run dev</code> and open <strong>http://127.0.0.1:3001</strong>.</li></ol><p className="gx-note">Google Ads needs a developer token. Business Profile needs API approval. See README.md for API names, incremental behavior, and source limitations.</p><div className="gx-modal-footer"><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="gx-button gx-secondary">Google Cloud Console<ExternalLink size={14} /></a><button className="gx-button gx-primary" onClick={() => { setSetup(false); request<Status>('/status').then(setStatus).catch(e => setError(e.message)); }}>Check connection setup<RefreshCw size={14} /></button></div></section></div>}
   </div>;
 }
+
 
