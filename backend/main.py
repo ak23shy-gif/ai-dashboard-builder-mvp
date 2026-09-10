@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .connectors import CATALOG, CONNECTORS, find_rows, flatten
@@ -27,6 +28,7 @@ from .accounts import cipher, save_token, read_token, list_accounts, remove_acco
 
 load_dotenv(Path(__file__).parent / ".env")
 ORIGIN = os.getenv("APP_ORIGIN", "http://127.0.0.1:3001").rstrip("/")
+CORS_ORIGINS = sorted({o.rstrip("/") for o in (os.getenv("CORS_ORIGINS", "") + "," + ORIGIN + ",http://127.0.0.1:3001,http://localhost:3001,https://google-api-data-extractor.vercel.app").split(",") if o.strip()})
 REDIRECT = os.getenv("GOOGLE_REDIRECT_URI", ORIGIN+"/extract-api/auth/callback")
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("BACKEND_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",") if h.strip()]
 sessions = {}
@@ -187,12 +189,13 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Google Extract", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 
 @app.middleware("http")
 async def local_security(request, call_next):
-    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin") != ORIGIN:
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin") and request.headers.get("origin").rstrip("/") not in CORS_ORIGINS:
         return JSONResponse({"detail": "Untrusted request origin."}, 403)
     try:
         response = await call_next(request)
