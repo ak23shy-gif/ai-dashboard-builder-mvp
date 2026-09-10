@@ -508,6 +508,22 @@ async def test_ga4_extract_chunks_long_ranges_monthly():
     ]
 
 
+@pytest.mark.anyio
+async def test_ga4_monthly_output_ignores_monthly_chunk_for_speed():
+    from backend.connectors import GA4
+    calls = []
+    async def fake_api(method, url, **kwargs):
+        body = kwargs["json"]
+        calls.append(body)
+        return {"rows": [], "rowCount": 0, "metricHeaders": [{"name": "sessions", "type": "TYPE_INTEGER"}]}
+    q = main.Query(product="ga4", resource="properties/1", start="2026-01-01", end="2026-03-15", dimensions=["year", "month"], metrics=["sessions"], options={"chunk": "monthly"})
+    batches = []
+    async for batch in GA4(fake_api).extract(q):
+        batches.append(batch)
+    assert [call["dateRanges"][0] for call in calls] == [{"startDate": "2026-01-01", "endDate": "2026-03-15"}]
+    assert calls[0]["limit"] == 100000
+
+
 def test_apply_query_uses_ga4_ui_report_planner(client, monkeypatch):
     login(client)
     monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")

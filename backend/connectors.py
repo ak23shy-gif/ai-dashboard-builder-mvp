@@ -60,10 +60,11 @@ class GA4(Connector):
         options = getattr(q, "options", {}) or {}
         start_date = date.fromisoformat(q.start)
         end_date = date.fromisoformat(q.end)
+        daily_output = "date" in q.dimensions
         chunk_days = int(options.get("chunk_days") or 0)
-        if not chunk_days and str(options.get("chunk", "")).lower() in ("1", "true", "yes", "monthly"):
+        if not chunk_days and daily_output and str(options.get("chunk", "")).lower() in ("1", "true", "yes", "monthly"):
             chunk_days = 31
-        if not chunk_days and options.get("chunk_months"):
+        if not chunk_days and daily_output and options.get("chunk_months"):
             chunk_days = max(1, int(options.get("chunk_months"))) * 31
         if not chunk_days:
             chunk_days = max(1, (end_date - start_date).days + 1)
@@ -71,7 +72,7 @@ class GA4(Connector):
         while current <= end_date:
             chunk_end = min(end_date, current + timedelta(days=chunk_days - 1))
             offset = 0
-            base_body = {"dateRanges": [{"startDate": current.isoformat(), "endDate": chunk_end.isoformat()}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": int(options.get("limit", 10000) or 10000), "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]}
+            base_body = {"dateRanges": [{"startDate": current.isoformat(), "endDate": chunk_end.isoformat()}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": int(options.get("limit", 100000) or 100000), "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]}
             filters = options.get("filters")
             if filters:
                 try:
