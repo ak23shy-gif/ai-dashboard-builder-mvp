@@ -115,7 +115,7 @@ def db():
     if database_url:
         import psycopg
         from psycopg.rows import dict_row
-        conn = psycopg.connect(normalize_database_url(database_url), row_factory=dict_row)
+        conn = psycopg.connect(normalize_database_url(database_url), row_factory=dict_row, prepare_threshold=None)
         return PostgresConnection(conn)
     DATA.mkdir(exist_ok=True)
     conn = sqlite3.connect(DATA / "extract.db", timeout=30)

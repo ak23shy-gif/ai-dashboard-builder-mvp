@@ -52,6 +52,10 @@ def test_backend_queries_do_not_depend_on_sqlite_rowid():
         assert "rowid" not in path.read_text().lower()
 
 
+def test_postgres_pooler_disables_prepared_statements():
+    assert "prepare_threshold=None" in Path("backend/storage.py").read_text()
+
+
 def test_auth_and_origin_boundaries(client):
     assert client.get("/jobs").status_code == 401
     assert client.post("/jobs", json={}).status_code == 403
