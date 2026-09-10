@@ -359,6 +359,10 @@ def test_direct_query_requires_key_and_streams_ga4(client, monkeypatch):
     source_data = client.get(url.replace("fields=date,sessions", "fields=property_display_name,property_id,date,sessions") + "&api_key=query-secret").json()
     assert source_data == [{"property_display_name": "Site", "property_id": "properties/1", "date": "2026-08-01", "sessions": 12}]
 
+    invalid = client.get(url.replace("fields=date,sessions", "fields=account_name,date,sessions") + "&api_key=query-secret")
+    assert invalid.status_code == 422
+    assert invalid.json()["detail"] == "Choose fields supported by this product."
+
 
 
 def test_direct_query_targets_are_self_contained(client, monkeypatch):

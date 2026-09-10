@@ -42,7 +42,7 @@ def spec(**extra):
     return {"product": "ga4", "start": "2026-08-01", "end": "2026-08-02", "dimensions": ["date"], "metrics": ["sessions"], "targets": [{"connection_id": "primary", "resource": "properties/1"}, {"connection_id": "second", "resource": "properties/2"}], **extra}
 
 
-def fake_connectors(monkeypatch, fail_second=False, custom_headers=False):
+def fake_connectors(monkeypatch, fail_second=False, custom_headers=False, crash_second=False):
     class Fake:
         def __init__(self, subject): self.subject = subject
         async def discover(self):
@@ -53,6 +53,8 @@ def fake_connectors(monkeypatch, fail_second=False, custom_headers=False):
             if custom_headers:
                 row = {"source_resource_id": "user header", "only_"+self.subject: 5}
             yield [row, row]
+            if self.subject == "second" and crash_second:
+                raise RuntimeError("Backend projection failed")
             if self.subject == "second" and fail_second:
                 raise ValueError("Source quota exhausted")
     monkeypatch.setattr(main, "connector", lambda product, request, connection_id=None: Fake(connection_id or "primary"))
@@ -169,6 +171,16 @@ def test_batch_failure_rolls_back_failed_source_and_requires_explicit_partial_ex
     assert len(exported.json()) == 1 and "successful_sources_only" in exported.headers["content-disposition"]
     with storage.db() as c:
         assert c.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0] == 1
+
+
+def test_batch_failure_shows_unexpected_exception_detail(client, monkeypatch):
+    account("primary")
+    account("second")
+    fake_connectors(monkeypatch, crash_second=True)
+    r = client.post("/batches", json=spec(), headers={"Origin": main.ORIGIN})
+    result = wait_job(client, r.json()["id"])
+    assert result["status"] == "partial"
+    assert result["sources"][1]["error"] == "RuntimeError: Backend projection failed"
 
 
 def test_incremental_skips_current_source_and_retries_failed_source(client, monkeypatch):

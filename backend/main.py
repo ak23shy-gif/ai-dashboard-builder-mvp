@@ -384,7 +384,7 @@ async def query_rows(q):
             resource_meta = discovered[resource_id]
             meta = {**CATALOG[q["product"]], **await con.fields(resource_id)}
             if q["product"] == "ga4":
-                meta["dimensions"] = list(dict.fromkeys(list(meta["dimensions"]) + list(GA4_SOURCE_FIELDS)))
+                meta["dimensions"] = list(dict.fromkeys(list(meta["dimensions"]) + GA4_PUBLIC_SOURCE_FIELDS))
             token = read_token(q.get("workspace", ""), cid)
             source_email = token.get("email", cid) if token else cid
             dimensions, metrics = q["dimensions"], q["metrics"]
@@ -392,6 +392,8 @@ async def query_rows(q):
             api_dimensions = [field for field in dimensions if field not in source_fields]
             if q.get("fields") and not (dimensions or metrics):
                 fields = q["fields"]
+                if not set(fields).issubset(set(meta["dimensions"]) | set(meta["metrics"])):
+                    raise HTTPException(422, "Choose fields supported by this product.")
                 dimensions = [field for field in fields if field in meta["dimensions"]]
                 metrics = [field for field in fields if field in meta["metrics"]]
                 source_fields = [field for field in dimensions if q["product"] == "ga4" and field in GA4_SOURCE_FIELDS]
@@ -501,7 +503,7 @@ async def apply_direct_query(payload: ApplyQueryRequest):
 
 
 GA4_METRIC_FIELDS = set(CATALOG["ga4"]["metrics"])
-GA4_SOURCE_FIELDS = {"source_google_account", "source_resource_id", "source_resource_name", "google_account_email", "account_name", "property_id", "property_name", "property_display_name"}
+GA4_SOURCE_FIELDS = {"source_google_account", "source_resource_id", "source_resource_name", "google_account_email", "property_id", "property_display_name"}
 GA4_PUBLIC_SOURCE_FIELDS = ["google_account_email", "property_id", "property_display_name"]
 GA4_TRAFFIC_ACQUISITION_ALIASES = {
     "sessionPrimaryChannelGroup": "sessionDefaultChannelGroup",
@@ -553,12 +555,8 @@ def clean_projected_row(row, wanted, output_source_fields=None, output_aliases=N
         row = {**row}
         if "google_account_email" in output_source_fields:
             row.setdefault("google_account_email", row.get("source_google_account"))
-        if "account_name" in output_source_fields:
-            row.setdefault("account_name", row.get("source_google_account"))
         if "property_id" in output_source_fields:
             row.setdefault("property_id", row.get("source_resource_id"))
-        if "property_name" in output_source_fields:
-            row.setdefault("property_name", row.get("source_resource_name"))
         if "property_display_name" in output_source_fields:
             row.setdefault("property_display_name", row.get("source_resource_name"))
     clean = {}
@@ -583,9 +581,7 @@ def ga4_api_dimensions(dimensions):
 def source_value_row(email, resource_id, resource_name):
     return {
         "google_account_email": email,
-        "account_name": email,
         "property_id": resource_id,
-        "property_name": resource_name,
         "property_display_name": resource_name,
         "source_google_account": email,
         "source_resource_id": resource_id,
@@ -730,16 +726,31 @@ async def direct_query(product: str, request: Request, format: str = "json"):
     if format not in ("json", "csv"):
         raise HTTPException(422, "Choose json or csv.")
     if format == "json":
+        def clean_direct_row(row):
+            if ga4_plan:
+                wanted = [f for f in ga4_wanted_fields if f not in ga4_plan["ignored_fields"]]
+                return clean_projected_row(row, wanted, ga4_plan["output_source_fields"], ga4_plan["output_aliases"])
+            names = column_names(row.keys())
+            return dict(zip(names, row.values()))
+
+        row_iter = query_rows(spec)
+        try:
+            first_row = await row_iter.__anext__()
+        except StopAsyncIteration:
+            first_row = None
+
         async def stream_json():
             columns, first = [], True
             yield "["
-            async for row in query_rows(spec):
-                if ga4_plan:
-                    wanted = [f for f in ga4_wanted_fields if f not in ga4_plan["ignored_fields"]]
-                    clean = clean_projected_row(row, wanted, ga4_plan["output_source_fields"], ga4_plan["output_aliases"])
-                else:
-                    names = column_names(row.keys())
-                    clean = dict(zip(names, row.values()))
+            rows = [first_row] if first_row is not None else []
+            for row in rows:
+                clean = clean_direct_row(row)
+                names = list(clean.keys())
+                columns = list(dict.fromkeys(columns + names))
+                yield ("" if first else ",") + json.dumps({k: clean.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
+                first = False
+            async for row in row_iter:
+                clean = clean_direct_row(row)
                 names = list(clean.keys())
                 columns = list(dict.fromkeys(columns + names))
                 yield ("" if first else ",") + json.dumps({k: clean.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
@@ -951,7 +962,7 @@ async def batch_extract(q: BatchQuery, request: Request):
 
 
 def failure_message(exc):
-    return str(exc.detail) if isinstance(exc, HTTPException) else str(exc) if isinstance(exc, ValueError) else "Extraction failed unexpectedly. Retry this source."
+    return str(exc.detail) if isinstance(exc, HTTPException) else str(exc) if isinstance(exc, ValueError) else f"{exc.__class__.__name__}: {exc}"
 
 
 async def run_batch(jid, uid, prepared, columns, internal_columns=None):
