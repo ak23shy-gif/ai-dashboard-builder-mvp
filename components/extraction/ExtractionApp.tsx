@@ -54,7 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function ProductIcon({ id, small = false }: { id: string; small?: boolean }) {
-  return <span className={`gx-product-icon gx-${id} ${small ? 'gx-small' : ''}`} aria-hidden="true">{id === 'ga4' ? <span className="gx-bars"><i /><i /><i /></span> : id === 'ads' ? <span className="gx-ads-symbol">A</span> : id === 'youtube' ? <span className="gx-youtube-symbol">?</span> : id === 'search' ? <Search size={small ? 19 : 25} /> : id === 'business' ? <span>?</span> : id === 'drive' ? <FolderOpen size={small ? 19 : 25} /> : id === 'api' ? <Braces size={small ? 19 : 25} /> : <FileSpreadsheet size={small ? 19 : 25} />}</span>;
+  return <span className={`gx-product-icon gx-${id} ${small ? 'gx-small' : ''}`} aria-hidden="true">{id === 'ga4' ? <span className="gx-bars"><i /><i /><i /></span> : id === 'ads' ? <span className="gx-ads-symbol">A</span> : id === 'youtube' ? <span className="gx-youtube-symbol">▶</span> : id === 'search' ? <Search size={small ? 19 : 25} /> : id === 'business' ? <span>▥</span> : id === 'drive' ? <FolderOpen size={small ? 19 : 25} /> : id === 'api' ? <Braces size={small ? 19 : 25} /> : <FileSpreadsheet size={small ? 19 : 25} />}</span>;
 }
 
 export function ExtractionApp() {
