@@ -4,6 +4,7 @@ import io
 import json
 import time
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -44,6 +45,11 @@ def test_postgres_sql_translation_escapes_literal_percent():
     cur.execute("SELECT id,value FROM secrets WHERE id LIKE 'google:%' AND value=?", (b"token",))
     assert raw.sql == "SELECT id,value FROM secrets WHERE id LIKE 'google:%%' AND value=%s"
     assert raw.params == (b"token",)
+
+
+def test_backend_queries_do_not_depend_on_sqlite_rowid():
+    for path in (Path("backend/main.py"), Path("backend/storage.py")):
+        assert "rowid" not in path.read_text().lower()
 
 
 def test_auth_and_origin_boundaries(client):

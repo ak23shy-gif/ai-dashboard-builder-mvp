@@ -1047,7 +1047,7 @@ def get_job(jid, uid):
 async def history(request: Request):
     uid = owner(request)
     with db() as c:
-        rows = c.execute("SELECT id,status,count,created,spec,error FROM jobs WHERE owner=? ORDER BY created DESC,rowid DESC LIMIT 30", (uid,)).fetchall()
+        rows = c.execute("SELECT id,status,count,created,spec,error FROM jobs WHERE owner=? ORDER BY created DESC,id DESC LIMIT 30", (uid,)).fetchall()
     return [{**dict(r), "spec": json.loads(r["spec"])} for r in rows]
 
 
@@ -1056,7 +1056,7 @@ async def job(jid: str, request: Request, offset: int = 0, limit: int = 50):
     requested_owner = "local-api" if jid.startswith("api_") else owner(request)
     row = get_job(jid, requested_owner)
     with db() as c:
-        rows = c.execute("SELECT data FROM rows WHERE job=? ORDER BY rowid LIMIT ? OFFSET ?", (jid, max(1, min(limit, 200)), max(0, offset))).fetchall()
+        rows = c.execute("SELECT data FROM rows WHERE job=? ORDER BY data LIMIT ? OFFSET ?", (jid, max(1, min(limit, 200)), max(0, offset))).fetchall()
         sources = [dict(r) for r in c.execute("SELECT * FROM job_sources WHERE job=? ORDER BY position", (jid,))]
     columns = json.loads(row["columns"])
     return {**row, "spec": json.loads(row["spec"]), "columns": columns, "rows": [{k: value.get(k) for k in columns} for value in (json.loads(row_value(r, "data", 0)) for r in rows)], "sources": sources}

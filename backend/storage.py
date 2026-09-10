@@ -189,7 +189,7 @@ def export_rows(job, columns, fmt):
     # Iterate with a cursor: exports never materialize the full dataset in memory.
     conn = db()
     try:
-        cur = conn.execute("SELECT data FROM rows WHERE job=? ORDER BY rowid", (job,))
+        cur = conn.execute("SELECT data FROM rows WHERE job=? ORDER BY data", (job,))
         if fmt == "json":
             yield "["
             first = True
