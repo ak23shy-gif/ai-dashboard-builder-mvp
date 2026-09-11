@@ -102,7 +102,7 @@ def test_encryption_key_accepts_common_env_paste_artifacts(client, monkeypatch):
 def test_tabular_export_deduplication_and_types(client):
     login(client)
     job_record()
-    rows = [{"activeUsers": 12, "campaign.id": "00123", "empty": None, "title": 'a,"b"\né›ª', "boolean": True}]
+    rows = [{"activeUsers": 12, "campaign.id": "00123", "empty": None, "title": 'a,"b"\n雪', "boolean": True}]
     columns = storage.insert_rows("job1", rows+rows, [])
     assert columns == ["active_users", "campaign_id", "empty", "title", "boolean"]
     result = client.get("/jobs/job1").json()
@@ -111,7 +111,7 @@ def test_tabular_export_deduplication_and_types(client):
     assert data[0]["campaign_id"] == "00123" and data[0]["active_users"] == 12
     assert data[0]["empty"] is None and data[0]["boolean"] is True
     content = client.get("/jobs/job1/export?format=csv").content.decode("utf-8-sig")
-    assert list(csv.DictReader(io.StringIO(content)))[0]["title"] == 'a,"b"\né›ª'
+    assert list(csv.DictReader(io.StringIO(content)))[0]["title"] == 'a,"b"\n雪'
 
 
 def test_failed_export_is_blocked_and_empty_export_keeps_headers(client):
@@ -124,7 +124,7 @@ def test_failed_export_is_blocked_and_empty_export_keeps_headers(client):
 
 
 def test_column_collisions_and_schema_drift(client):
-    assert storage.column_names(["A", "a", "a_2", "", "ä½ å¥½"]) == ["a", "a_2", "a_2_2", "column", "column_2"]
+    assert storage.column_names(["A", "a", "a_2", "", "你好"]) == ["a", "a_2", "a_2_2", "column", "column_2"]
     job_record()
     storage.insert_rows("job1", [{"a": 1}], [])
     with pytest.raises(ValueError, match="schema changed"):
@@ -576,7 +576,6 @@ def test_query_caps_future_date_to_today(monkeypatch):
     start, end = main.apply_exclude_recent_days("2025-01-01", "2099-12-31", {})
     assert start == "2025-01-01"
     assert end == "2026-09-10"
-
 
 
 
