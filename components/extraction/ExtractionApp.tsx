@@ -116,7 +116,7 @@ export function ExtractionApp() {
       params.set('metrics', metrics.join(','));
       if (product === 'ga4') {
         params.set('exclude_recent_days', '2');
-        params.set('totals', 'true');
+        params.set('include_totals', 'true');
         if (dimensions.includes('date')) params.set('chunk', 'monthly');
         const ga4Fields = [...dimensions, ...metrics];
         if (ga4Fields.includes('sessionPrimaryChannelGroup') || ga4Fields.includes('sessionDefaultChannelGroup')) {

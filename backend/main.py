@@ -804,7 +804,7 @@ async def direct_query(product: str, request: Request, format: str = "json"):
     metrics_param = split_csv(params.get("metrics", ""))
     ga4_plan = None
     ga4_wanted_fields = []
-    include_totals = product == "ga4" and (str(params.get("include_totals", "")).lower() in ("1", "true", "yes") or str(params.get("totals", "")).lower() in ("1", "true", "yes"))
+    include_totals = product == "ga4" and str(params.get("include_totals", "")).lower() in ("1", "true", "yes")
     if product == "ga4" and (params.get("ui_report") or params.get("report")):
         ga4_wanted_fields = fields_param or dimensions_param + metrics_param
         ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, params.get("ui_report") or params.get("report") or "")
