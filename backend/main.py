@@ -440,6 +440,18 @@ async def query_rows(q):
 
 
 
+async def ga4_official_totals(spec, metrics):
+    metrics = [metric for metric in metrics if metric]
+    if spec.get("product") != "ga4" or not metrics:
+        return {}
+    total_spec = {**spec, "fields": [], "dimensions": [], "metrics": metrics}
+    totals = {metric: 0 for metric in metrics}
+    async for row in query_rows(total_spec):
+        for metric in metrics:
+            value = row.get(metric)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                totals[metric] += value
+    return {column_names([key])[0]: value for key, value in totals.items()}
 
 def normalize_pasted_url(value):
     target = value.strip()
@@ -792,12 +804,14 @@ async def direct_query(product: str, request: Request, format: str = "json"):
     metrics_param = split_csv(params.get("metrics", ""))
     ga4_plan = None
     ga4_wanted_fields = []
+    include_totals = product == "ga4" and str(params.get("include_totals", "")).lower() in ("1", "true", "yes")
     if product == "ga4" and (params.get("ui_report") or params.get("report")):
         ga4_wanted_fields = fields_param or dimensions_param + metrics_param
         ga4_plan = ga4_ui_report_plan(ga4_wanted_fields, params.get("ui_report") or params.get("report") or "")
         fields_param = []
         dimensions_param = ga4_plan["output_source_fields"] + ga4_plan["dimensions"]
         metrics_param = ga4_plan["metrics"]
+    total_metrics = metrics_param or [field for field in fields_param if product == "ga4" and field in GA4_METRIC_FIELDS]
     spec = {
         "product": product,
         "workspace": workspace,
@@ -827,9 +841,11 @@ async def direct_query(product: str, request: Request, format: str = "json"):
         except StopAsyncIteration:
             first_row = None
 
+        totals = await ga4_official_totals(spec, total_metrics) if include_totals else None
+
         async def stream_json():
             columns, first = [], True
-            yield "["
+            yield "{\"data\":[" if include_totals else "["
             rows = [first_row] if first_row is not None else []
             for row in rows:
                 clean = clean_direct_row(row)
@@ -843,7 +859,10 @@ async def direct_query(product: str, request: Request, format: str = "json"):
                 columns = list(dict.fromkeys(columns + names))
                 yield ("" if first else ",") + json.dumps({k: clean.get(k) for k in columns}, ensure_ascii=False, allow_nan=False)
                 first = False
-            yield "]"
+            if include_totals:
+                yield "],\"totals\":" + json.dumps(totals or {}, ensure_ascii=False, allow_nan=False) + "}"
+            else:
+                yield "]"
         return StreamingResponse(stream_json(), media_type="application/json")
     async def stream_csv():
         import csv, io

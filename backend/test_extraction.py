@@ -595,3 +595,25 @@ def test_resource_discovery_cache_reused_for_fields(client, monkeypatch):
     assert resp.status_code == 200, resp.text
     assert client.get("/products/ga4/fields?connection_id=user1&resource=properties/1").status_code == 200
     assert calls["discover"] == 1
+
+
+def test_direct_ga4_query_can_return_official_totals(client, monkeypatch):
+    login(client)
+    monkeypatch.setenv("EXTRACT_API_KEY", "query-secret")
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    class Fake:
+        async def discover(self): return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid): return {"dimensions": ["sessionDefaultChannelGroup"], "metrics": ["sessions"]}
+        async def extract(self, q):
+            if q.dimensions:
+                yield [
+                    {"sessionDefaultChannelGroup": "Organic Search", "sessions": 39796},
+                    {"sessionDefaultChannelGroup": "Direct", "sessions": 19379},
+                ]
+            else:
+                yield [{"sessions": 70688}]
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
+    url = "/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&dimensions=sessionDefaultChannelGroup&metrics=sessions&include_totals=true"
+    data = client.get(url).json()
+    assert sum(row["sessions"] for row in data["data"]) == 59175
+    assert data["totals"] == {"sessions": 70688}
