@@ -37,6 +37,8 @@ oauth_states = {}
 tasks = set()
 refresh_lock = asyncio.Lock()
 job_lock = asyncio.Lock()
+resource_cache = {}
+RESOURCE_CACHE_TTL = 600
 
 
 
@@ -312,6 +314,8 @@ async def disconnect(request: Request, connection_id: str = ""):
         async with refresh_lock:
             for subject in targets:
                 remove_account(uid, subject)
+                for key in [key for key in resource_cache if key[0] == uid and key[1] == subject]:
+                    resource_cache.pop(key, None)
     response = JSONResponse({"ok": True})
     if not connection_id:
         delete_workspace_sessions(uid)
@@ -865,11 +869,23 @@ async def direct_query(product: str, request: Request, format: str = "json"):
     return StreamingResponse(stream_csv(), media_type="text/csv; charset=utf-8")
 
 
-@app.get("/products/{product}/resources")
-async def resources(product: str, request: Request, connection_id: str = ""):
+
+async def discover_resources_cached(product, request, connection_id="", force=False):
     if product == "api":
         return await connector(product, request).discover()
-    return await connector(product, request, connection_id or None).discover()
+    uid = owner(request)
+    cid = connection_id or uid
+    key = (uid, cid, product)
+    now = time.time()
+    cached = resource_cache.get(key)
+    if not force and cached and cached[0] > now:
+        return cached[1]
+    rows = await connector(product, request, cid).discover()
+    resource_cache[key] = (now + RESOURCE_CACHE_TTL, rows)
+    return rows
+@app.get("/products/{product}/resources")
+async def resources(product: str, request: Request, connection_id: str = "", refresh: bool = False):
+    return await discover_resources_cached(product, request, connection_id or "", force=refresh)
 
 
 @app.get("/products/{product}/fields")
@@ -881,7 +897,8 @@ async def fields(product: str, resource: str, request: Request, connection_id: s
         columns = list(dict.fromkeys(key for row in sample[:100] for key in row))
         numeric = [key for key in columns if any(isinstance(row.get(key), (int, float)) and not isinstance(row.get(key), bool) for row in sample[:100])]
         return {"dimensions": columns, "metrics": numeric, "sampleRows": len(sample)}
-    if resource not in {r["id"] for r in await con.discover()}:
+    discovered = await discover_resources_cached(product, request, connection_id or "")
+    if resource not in {r["id"] for r in discovered}:
         raise HTTPException(403, "Select an accessible resource.")
     data = await con.fields(resource)
     if product == "ga4":

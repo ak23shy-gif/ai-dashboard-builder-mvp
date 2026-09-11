@@ -102,7 +102,7 @@ def test_encryption_key_accepts_common_env_paste_artifacts(client, monkeypatch):
 def test_tabular_export_deduplication_and_types(client):
     login(client)
     job_record()
-    rows = [{"activeUsers": 12, "campaign.id": "00123", "empty": None, "title": 'a,"b"\n雪', "boolean": True}]
+    rows = [{"activeUsers": 12, "campaign.id": "00123", "empty": None, "title": 'a,"b"\né›ª', "boolean": True}]
     columns = storage.insert_rows("job1", rows+rows, [])
     assert columns == ["active_users", "campaign_id", "empty", "title", "boolean"]
     result = client.get("/jobs/job1").json()
@@ -111,7 +111,7 @@ def test_tabular_export_deduplication_and_types(client):
     assert data[0]["campaign_id"] == "00123" and data[0]["active_users"] == 12
     assert data[0]["empty"] is None and data[0]["boolean"] is True
     content = client.get("/jobs/job1/export?format=csv").content.decode("utf-8-sig")
-    assert list(csv.DictReader(io.StringIO(content)))[0]["title"] == 'a,"b"\n雪'
+    assert list(csv.DictReader(io.StringIO(content)))[0]["title"] == 'a,"b"\né›ª'
 
 
 def test_failed_export_is_blocked_and_empty_export_keeps_headers(client):
@@ -124,7 +124,7 @@ def test_failed_export_is_blocked_and_empty_export_keeps_headers(client):
 
 
 def test_column_collisions_and_schema_drift(client):
-    assert storage.column_names(["A", "a", "a_2", "", "你好"]) == ["a", "a_2", "a_2_2", "column", "column_2"]
+    assert storage.column_names(["A", "a", "a_2", "", "ä½ å¥½"]) == ["a", "a_2", "a_2_2", "column", "column_2"]
     job_record()
     storage.insert_rows("job1", [{"a": 1}], [])
     with pytest.raises(ValueError, match="schema changed"):
@@ -354,7 +354,7 @@ def test_direct_query_requires_key_and_streams_ga4(client, monkeypatch):
         async def extract(self, q):
             assert q.dimensions == ["date"] and q.metrics == ["sessions"]
             yield [{"date": "2026-08-01", "sessions": 12}]
-    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
     url = "/query/ga4?workspace=user1&connection_id=user1&resource=properties/1&date_from=2026-08-01&date_to=2026-08-02&fields=date,sessions"
     assert client.get(url).status_code == 401
     data = client.get(url + "&api_key=query-secret").json()
@@ -434,7 +434,7 @@ def test_windsor_style_ga4_endpoint_returns_data_wrapper(client, monkeypatch):
         async def extract(self, q):
             assert q.dimensions == ["sessionPrimaryChannelGroup"] and q.metrics == ["sessions"]
             yield [{"sessionPrimaryChannelGroup": "Organic Search", "sessions": 12}]
-    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
     url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&fields=property_display_name,sessionPrimaryChannelGroup,sessions&date_from=2026-08-01&date_to=2026-08-02"
     assert client.get(url).json() == {"data": [{"property_display_name": "Site", "session_primary_channel_group": "Organic Search", "sessions": 12}]}
 
@@ -450,7 +450,7 @@ def test_windsor_style_ga4_traffic_acquisition_uses_ui_report_grain(client, monk
         async def extract(self, q):
             seen.append((q.dimensions, q.metrics))
             yield [{"sessionDefaultChannelGroup": "Organic Search", "sessions": 12, "activeUsers": 10}]
-    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
     url = "/googleanalytics4?api_key=query-secret&workspace=user1&property_id=1&ui_report=traffic_acquisition&fields=sessionPrimaryChannelGroup,sessionManualSource,sessions,activeUsers&date_from=2026-08-01&date_to=2026-08-02"
     assert client.get(url).json() == {"data": [{"session_primary_channel_group": "Organic Search", "sessions": 12, "active_users": 10}]}
     assert seen == [(["sessionDefaultChannelGroup"], ["sessions", "activeUsers"])]
@@ -473,7 +473,7 @@ def test_direct_ga4_query_ui_report_uses_same_planner(client, monkeypatch):
         async def extract(self, q):
             seen.append((q.dimensions, q.metrics))
             yield [{"sessionDefaultChannelGroup": "Direct", "sessions": 5, "activeUsers": 4}]
-    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
     url = "/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&ui_report=traffic_acquisition&dimensions=sessionPrimaryChannelGroup,sessionManualSource&metrics=sessions,activeUsers"
     assert client.get(url).json() == [{"session_primary_channel_group": "Direct", "sessions": 5, "active_users": 4}]
     assert seen == [(["sessionDefaultChannelGroup"], ["sessions", "activeUsers"])]
@@ -535,7 +535,7 @@ def test_apply_query_uses_ga4_ui_report_planner(client, monkeypatch):
         async def extract(self, q):
             seen.append((q.start, q.end, q.dimensions, q.metrics, q.options))
             yield [{"year": "2026", "month": "09", "sessionDefaultChannelGroup": "Organic Search", "sessions": 12, "activeUsers": 10}]
-    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
     url = "https://google-api-data-extractor-backend.onrender.com/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&ui_report=traffic_acquisition&exclude_recent_days=2&chunk=monthly&dimensions=year,month,sessionPrimaryChannelGroup,sessionManualSource&metrics=sessions,activeUsers&date_from=2026-09-01&date_to=2026-09-05"
     r = client.post("/query/apply", json={"url": url}, headers={"Origin": main.ORIGIN})
     assert r.json()["rows"] == [{"year": "2026", "month": "09", "session_primary_channel_group": "Organic Search", "sessions": 12, "active_users": 10}]
@@ -553,7 +553,7 @@ def test_query_extract_creates_exportable_job(client, monkeypatch):
         async def fields(self, rid): return {"dimensions": ["date"], "metrics": ["sessions"]}
         async def extract(self, q):
             yield [{"date": "2026-08-01", "sessions": 12}, {"date": "2026-08-02", "sessions": 14}]
-    monkeypatch.setattr(main, "connector_for_query", lambda product, workspace, connection_id: Fake())
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
     url = "https://google-api-data-extractor-backend.onrender.com/query/ga4?api_key=query-secret&workspace=user1&resources=properties/1&dimensions=date&metrics=sessions&date_from=2026-08-01&date_to=2026-08-02"
     r = client.post("/query/extract", json={"url": url}, headers={"Origin": main.ORIGIN})
     assert r.status_code == 200, r.text
@@ -576,3 +576,23 @@ def test_query_caps_future_date_to_today(monkeypatch):
     start, end = main.apply_exclude_recent_days("2025-01-01", "2099-12-31", {})
     assert start == "2025-01-01"
     assert end == "2026-09-10"
+
+
+
+
+def test_resource_discovery_cache_reused_for_fields(client, monkeypatch):
+    login(client)
+    main.save_token({"access_token": "a", "refresh_token": "r", "sub": "user1", "email": "me@example.com", "scope": "https://www.googleapis.com/auth/analytics.readonly", "expires_at": time.time()+1000}, "user1")
+    main.resource_cache.clear()
+    calls = {"discover": 0}
+    class Fake:
+        async def discover(self):
+            calls["discover"] += 1
+            return [{"id": "properties/1", "name": "Site"}]
+        async def fields(self, rid):
+            return {"dimensions": ["date"], "metrics": ["sessions"]}
+    monkeypatch.setitem(main.CONNECTORS, "ga4", lambda api: Fake())
+    resp = client.get("/products/ga4/resources?connection_id=user1")
+    assert resp.status_code == 200, resp.text
+    assert client.get("/products/ga4/fields?connection_id=user1&resource=properties/1").status_code == 200
+    assert calls["discover"] == 1
