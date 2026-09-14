@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Columns3, Database, Hash, Rows3, Table2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Columns3, Database, Hash, MoveHorizontal, Rows3, Table2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDashboardValue } from '@/lib/data/dataProcessor';
@@ -61,6 +61,9 @@ function labelForSlot(dataContext: DashboardDataContext | undefined, slot: strin
 
 export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
   const [previewCount, setPreviewCount] = useState(250);
+  const [horizontalPosition, setHorizontalPosition] = useState(0);
+  const [maxHorizontalPosition, setMaxHorizontalPosition] = useState(0);
+  const tableViewportRef = useRef<HTMLDivElement>(null);
   const displayColumns = useMemo(
     () =>
       modelColumns.map((column) => ({
@@ -80,6 +83,39 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
       return profiles;
     }, {});
   }, [displayColumns, rows]);
+
+  useEffect(() => {
+    const tableViewport = tableViewportRef.current;
+
+    if (!tableViewport) {
+      return;
+    }
+
+    function updateHorizontalLimit() {
+      const nextMax = Math.max(0, tableViewportRef.current ? tableViewportRef.current.scrollWidth - tableViewportRef.current.clientWidth : 0);
+      setMaxHorizontalPosition(nextMax);
+      setHorizontalPosition((current) => Math.min(current, nextMax));
+    }
+
+    updateHorizontalLimit();
+    window.addEventListener('resize', updateHorizontalLimit);
+
+    return () => window.removeEventListener('resize', updateHorizontalLimit);
+  }, [displayColumns.length, previewRows.length, tableMinWidth]);
+
+  function handleHorizontalPositionChange(value: number) {
+    setHorizontalPosition(value);
+
+    if (tableViewportRef.current) {
+      tableViewportRef.current.scrollLeft = value;
+    }
+  }
+
+  function handleTableScroll() {
+    if (tableViewportRef.current) {
+      setHorizontalPosition(tableViewportRef.current.scrollLeft);
+    }
+  }
 
   return (
     <div className="grid gap-5">
@@ -150,7 +186,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
         <CardContent>
           {rows.length ? (
             <>
-              <div className="mb-4 rounded-md border border-border bg-muted p-3">
+              <div className="mb-4 grid gap-3 rounded-md border border-border bg-muted p-3">
                 <label className="grid gap-2 text-xs font-medium text-muted-foreground">
                   <span className="flex items-center gap-2">
                     <Rows3 className="h-4 w-4" />
@@ -166,9 +202,29 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
                     value={Math.min(previewCount, Math.min(rows.length, 1000))}
                   />
                 </label>
+                <label className="grid gap-2 text-xs font-medium text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    <MoveHorizontal className="h-4 w-4" />
+                    Table position
+                  </span>
+                  <input
+                    className="accent-primary"
+                    disabled={maxHorizontalPosition === 0}
+                    max={maxHorizontalPosition}
+                    min={0}
+                    onChange={(event) => handleHorizontalPositionChange(Number(event.target.value))}
+                    step={25}
+                    type="range"
+                    value={Math.min(horizontalPosition, maxHorizontalPosition)}
+                  />
+                </label>
               </div>
 
-              <div className="max-h-[560px] overflow-auto rounded-md border border-slate-200">
+              <div
+                className="max-h-[560px] overflow-auto rounded-md border border-slate-200"
+                onScroll={handleTableScroll}
+                ref={tableViewportRef}
+              >
               <table className="w-full text-sm" style={{ minWidth: tableMinWidth }}>
                 <thead className="sticky top-0 bg-slate-50">
                   <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">

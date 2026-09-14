@@ -32,7 +32,7 @@ export function KpiCard({ title, value, change, trend = 'up', icon: Icon }: KpiC
         <Badge
           className={cn(
             'mt-4 max-w-full border-0',
-            trend === 'up' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground',
+            trend === 'up' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
           )}
         >
           <TrendIcon className="mr-1 h-3.5 w-3.5" />

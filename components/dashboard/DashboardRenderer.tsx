@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, AlertTriangle, CheckCircle2, Edit3, Gauge, Info, Layers3, Percent, Repeat2, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Edit3, Gauge, Layers3, Percent, Repeat2, Trash2 } from 'lucide-react';
 import { AreaChartCard } from '@/components/dashboard/AreaChartCard';
 import { BarChartCard } from '@/components/dashboard/BarChartCard';
 import { DataTable } from '@/components/dashboard/DataTable';
@@ -58,6 +58,20 @@ function getMetricValue(summary: KpiSummary, metric: DashboardMetric, title: str
   return formatDashboardValue(summary[metric], `${metric} ${title}`);
 }
 
+function cleanKpiChange(change: string | undefined) {
+  const value = String(change || '').trim();
+
+  if (!value) {
+    return 'Filtered total';
+  }
+
+  if (/\b(sum|average|avg|count|distinctcount|min|max)\s*\(/i.test(value) || /\[\[?[\w\s]+\]?\]/.test(value)) {
+    return 'Filtered total';
+  }
+
+  return value.length > 34 ? `${value.slice(0, 31).trim()}...` : value;
+}
+
 function metricLabelFromComponents(config: DashboardConfig, metric: DashboardMetric) {
   const kpi = config.components.find(
     (component): component is KpiComponentConfig => component.type === 'kpi' && component.metric === metric,
@@ -110,7 +124,7 @@ function renderKpi(component: KpiComponentConfig, summary: KpiSummary) {
 
   return (
     <KpiCard
-      change={component.change || 'Updated from dashboard JSON'}
+      change={cleanKpiChange(component.change)}
       icon={Icon}
       title={component.title}
       trend={component.trend}
@@ -276,8 +290,7 @@ function VisualRationale({ rationale }: { rationale?: string }) {
   }
 
   return (
-    <div className="mt-2 flex items-start gap-2 rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-xs leading-5 text-slate-500">
-      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+    <div className="mt-2 rounded-md border border-slate-200 bg-card px-3 py-2 text-xs leading-5 text-muted-foreground">
       <span>{rationale}</span>
     </div>
   );

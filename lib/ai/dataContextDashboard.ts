@@ -415,7 +415,7 @@ export function createDashboardFromDataContext(
       type: 'kpi',
       title: metricLabel(dataContext, metric),
       metric,
-      change: kpiRationale(dataContext, metric),
+      change: 'Filtered total',
       trend: trendDirectionFromAnomalies(dataContext),
       rationale: kpiRationale(dataContext, metric),
     });
