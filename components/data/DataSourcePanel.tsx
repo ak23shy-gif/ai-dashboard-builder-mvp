@@ -184,9 +184,9 @@ export function DataSourcePanel({ onDataImported }: DataSourcePanelProps) {
   }
 
   return (
-    <Card className="mt-5 border-slate-200/80 shadow-none">
+    <Card className="mt-5 min-w-0 border-slate-200/80 shadow-none">
       <CardHeader>
-        <div>
+        <div className="min-w-0">
           <CardTitle>Data source</CardTitle>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose one connector, then DashForge profiles the data and builds the dashboard.</p>
         </div>
@@ -195,11 +195,11 @@ export function DataSourcePanel({ onDataImported }: DataSourcePanelProps) {
         </Button>
       </CardHeader>
       {isOpen && (
-        <CardContent>
-          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <CardContent className="min-w-0">
+          <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
             Connector
             <select
-              className="h-10 rounded-md border border-border bg-card px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:ring-2 focus-visible:ring-primary"
+              className="h-10 w-full min-w-0 max-w-full rounded-md border border-border bg-card px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:ring-2 focus-visible:ring-primary"
               value={sourceMode}
               onChange={(event) => setSourceMode(event.target.value as SourceMode)}
             >
@@ -272,7 +272,7 @@ export function DataSourcePanel({ onDataImported }: DataSourcePanelProps) {
               <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                 Database type
                 <select
-                  className="h-9 rounded-md border border-border bg-card px-3 text-sm text-slate-900 outline-none transition focus-visible:ring-2 focus-visible:ring-primary"
+                  className="h-9 w-full min-w-0 max-w-full rounded-md border border-border bg-card px-3 text-sm text-slate-900 outline-none transition focus-visible:ring-2 focus-visible:ring-primary"
                   value={connection.provider}
                   onChange={(event) => updateConnection('provider', event.target.value as DatabaseProvider)}
                 >
@@ -343,7 +343,7 @@ export function DataSourcePanel({ onDataImported }: DataSourcePanelProps) {
                   <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                     Table
                     <select
-                      className="h-9 rounded-md border border-border bg-card px-3 text-sm text-slate-900 outline-none transition focus-visible:ring-2 focus-visible:ring-primary"
+                      className="h-9 w-full min-w-0 max-w-full rounded-md border border-border bg-card px-3 text-sm text-slate-900 outline-none transition focus-visible:ring-2 focus-visible:ring-primary"
                       value={selectedTable}
                       onChange={(event) => setSelectedTable(event.target.value)}
                     >

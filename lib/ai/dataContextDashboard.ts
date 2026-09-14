@@ -20,6 +20,14 @@ function cleanLabel(value: string | undefined, fallback: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function compactSourceName(dataContext: DashboardDataContext) {
+  if (/^https?:\/\//i.test(dataContext.sourceName)) {
+    return dataContext.sourceType === 'api' ? 'Connected API Data' : 'Connected Data';
+  }
+
+  return dataContext.sourceName.replace(/\.[^.]+$/, '');
+}
+
 function normalise(value: string | undefined) {
   return String(value || '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -259,7 +267,7 @@ function textBox(dataContext: DashboardDataContext, prompt: string): TextBoxComp
 
 function titleForPrompt(prompt: string, dataContext: DashboardDataContext) {
   const promptText = normalise(prompt);
-  const sourceBase = dataContext.sourceName.replace(/\.[^.]+$/, '');
+  const sourceBase = compactSourceName(dataContext);
 
   if (promptText.includes('plan') || promptText.includes('architecture')) {
     return `${cleanLabel(sourceBase, 'Dataset')} Analyst Plan`;
@@ -364,23 +372,16 @@ function componentIds(components: DashboardComponentConfig[]) {
 function dashboardDescription(prompt: string, dataContext: DashboardDataContext) {
   const brief = dataContext.analystBrief;
   const metrics = availableMetrics(dataContext).map((metric) => metricLabel(dataContext, metric)).slice(0, 4);
-  const filters = [
-    dataContext.dimensionSlots.primary ? dimensionLabel(dataContext, 'brand') : null,
-    dataContext.dimensionSlots.secondary ? dimensionLabel(dataContext, 'channel') : null,
-    dataContext.dimensionSlots.date ? fieldLabel(dataContext, dataContext.dimensionSlots.date, 'Period') : null,
-  ].filter(Boolean);
+  const rowCount = dataContext.processedRowCount.toLocaleString('en-GB');
+  const period = dataContext.timeRange?.label;
+  const mainInsight = brief?.keyInsights[0];
 
   return [
-    `${brief?.domain || inferDomain(dataContext)} from ${dataContext.sourceName}.`,
-    `Objective: ${prompt.trim() || 'monitor performance and identify drivers'}.`,
-    `Key insights: ${brief?.keyInsights.length ? brief.keyInsights.slice(0, 3).join(' ') : 'insights will be generated from detected measures and dimensions.'}`,
-    `Dashboard plan: ${brief?.dashboardPlan.length ? brief.dashboardPlan.slice(0, 3).join(' ') : 'KPI row, driver visuals, then detail table.'}`,
-    `Caveats: ${brief?.caveats.length ? brief.caveats.slice(0, 2).join(' ') : 'No major caveats detected.'}`,
-    `Grain: ${brief?.grain || dataContext.grain || 'one source row or event record'}.`,
-    `KPIs: ${metrics.length ? metrics.join(', ') : 'no reliable numeric KPI detected'}.`,
-    `Slicers: ${filters.length ? filters.join(', ') : 'none detected'}.`,
-    'Layout follows the inverted pyramid: executive summary first, explanatory trends/drivers next, diagnostic detail last.',
-  ].join(' ');
+    `${brief?.domain || inferDomain(dataContext)} from ${compactSourceName(dataContext)}.`,
+    `${rowCount} rows analysed${period ? ` across ${period}` : ''}.`,
+    metrics.length ? `Primary measures: ${metrics.join(', ')}.` : 'No reliable numeric KPI detected.',
+    mainInsight ? `Main insight: ${mainInsight}` : '',
+  ].filter(Boolean).join(' ');
 }
 
 export function createDashboardFromDataContext(

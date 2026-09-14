@@ -29,6 +29,23 @@ const defaultFilters: DashboardFilters = {
   endMonth: 12,
 };
 
+function compactDashboardTitle(title: string) {
+  if (/^https?:\/\//i.test(title) || title.length > 72) {
+    return 'Connected Data Dashboard';
+  }
+
+  return title;
+}
+
+function compactDashboardDescription(description: string | undefined) {
+  if (!description) {
+    return '';
+  }
+
+  const cleaned = description.replace(/\s+/g, ' ').trim();
+  return cleaned.length > 220 ? `${cleaned.slice(0, 217).trim()}...` : cleaned;
+}
+
 type DashboardCanvasProps = {
   dashboardConfig: DashboardConfig;
   dataContext?: DashboardDataContext;
@@ -67,12 +84,14 @@ export function DashboardCanvas({
   const monthlyData = useMemo(() => groupByMonth(filteredRows), [filteredRows]);
   const channelData = useMemo(() => groupByChannel(filteredRows), [filteredRows]);
   const brandData = useMemo(() => groupByBrand(filteredRows), [filteredRows]);
+  const displayTitle = compactDashboardTitle(dashboardConfig.title);
+  const displayDescription = compactDashboardDescription(dashboardConfig.description);
 
   return (
-    <section className="min-w-0 flex-1 overflow-auto bg-slate-50">
+    <section className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50">
       <div className="border-b border-slate-200 bg-white px-6 py-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 onClick={() => setActiveView('report')}
@@ -90,15 +109,17 @@ export function DashboardCanvas({
               </Button>
             <Badge>{hasConnectedData ? `${filteredRows.length.toLocaleString('en-GB')} rows` : 'No data'}</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">{dashboardConfig.title}</h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              {dashboardConfig.description}
-            </p>
+            <h1 className="mt-3 max-w-4xl break-words text-2xl font-semibold tracking-normal text-slate-950">{displayTitle}</h1>
+            {displayDescription && (
+              <p className="mt-1 max-w-3xl overflow-hidden text-ellipsis text-sm leading-6 text-slate-500">
+                {displayDescription}
+              </p>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge>
+          <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
+            <Badge className="max-w-[220px] truncate">
               <Database className="mr-1 h-3.5 w-3.5" />
-              {sourceLabel}
+              <span className="truncate">{sourceLabel}</span>
             </Badge>
             <Badge>
               <CalendarDays className="mr-1 h-3.5 w-3.5" />

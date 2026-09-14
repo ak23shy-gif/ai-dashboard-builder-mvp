@@ -178,12 +178,12 @@ export function DashboardBuilderShell() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="h-screen max-w-full overflow-hidden bg-background text-foreground">
       <div
         className={
           isSidebarCollapsed
-            ? 'grid min-h-screen grid-cols-1 lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[76px_minmax(0,1fr)_380px]'
-            : 'grid min-h-screen grid-cols-1 lg:grid-cols-[268px_minmax(0,1fr)] xl:grid-cols-[268px_minmax(0,1fr)_380px]'
+            ? 'grid h-screen max-w-full grid-cols-1 overflow-hidden lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[76px_minmax(0,1fr)_minmax(320px,360px)]'
+            : 'grid h-screen max-w-full grid-cols-1 overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_minmax(320px,360px)]'
         }
       >
         <AppSidebar
