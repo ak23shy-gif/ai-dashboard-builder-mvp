@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Columns3, Database, Hash, MoveHorizontal, Rows3, Table2 } from 'lucide-react';
+import { Columns3, Database, Hash, Rows3, Table2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDashboardValue } from '@/lib/data/dataProcessor';
@@ -86,9 +86,9 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="border-slate-200/80 shadow-none">
           <CardContent className="flex items-center justify-between gap-3 p-5">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-slate-500">Source</p>
-              <p className="mt-1 text-sm font-semibold text-slate-950">{sourceLabel}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-slate-950" title={sourceLabel}>{sourceLabel}</p>
             </div>
             <Database className="h-5 w-5 text-primary" />
           </CardContent>
@@ -150,7 +150,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
         <CardContent>
           {rows.length ? (
             <>
-              <div className="mb-4 grid gap-3 rounded-md border border-border bg-muted p-3">
+              <div className="mb-4 rounded-md border border-border bg-muted p-3">
                 <label className="grid gap-2 text-xs font-medium text-muted-foreground">
                   <span className="flex items-center gap-2">
                     <Rows3 className="h-4 w-4" />
@@ -166,10 +166,6 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
                     value={Math.min(previewCount, Math.min(rows.length, 1000))}
                   />
                 </label>
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <MoveHorizontal className="h-4 w-4" />
-                  Use the horizontal scrollbar at the bottom of the table to view hidden right-side columns.
-                </p>
               </div>
 
               <div className="max-h-[560px] overflow-auto rounded-md border border-slate-200">

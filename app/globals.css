@@ -80,6 +80,10 @@ button {
 
 [data-theme='dark'] .bg-white,
 [data-theme='midnight'] .bg-white,
+[data-theme='dark'] .bg-white\/80,
+[data-theme='midnight'] .bg-white\/80,
+[data-theme='dark'] .bg-white\/90,
+[data-theme='midnight'] .bg-white\/90,
 [data-theme='dark'] .bg-slate-50,
 [data-theme='midnight'] .bg-slate-50 {
   background-color: hsl(var(--card));
@@ -122,7 +126,9 @@ button {
 [data-theme='dark'] .text-slate-800,
 [data-theme='midnight'] .text-slate-800,
 [data-theme='dark'] .text-slate-700,
-[data-theme='midnight'] .text-slate-700 {
+[data-theme='midnight'] .text-slate-700,
+[data-theme='dark'] .text-slate-600,
+[data-theme='midnight'] .text-slate-600 {
   color: hsl(var(--foreground));
 }
 

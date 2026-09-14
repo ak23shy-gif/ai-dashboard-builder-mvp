@@ -45,7 +45,7 @@ export function DataInsights({ dataContext, dimensionCount, recordCount, summary
         const Icon = item.icon;
 
         return (
-          <Card className="border-slate-200/80 bg-white/80 shadow-none" key={item.label}>
+          <Card className="border-slate-200/80 bg-card shadow-none" key={item.label}>
             <CardContent className="flex items-center justify-between gap-3 p-4">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-slate-500">{item.label}</p>
