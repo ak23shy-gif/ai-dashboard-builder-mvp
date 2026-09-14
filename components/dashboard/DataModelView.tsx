@@ -8,13 +8,15 @@ import { formatDashboardValue } from '@/lib/data/dataProcessor';
 import type { DashboardDataContext } from '@/lib/data/importData';
 import type { MarketingRow } from '@/lib/data/mockData';
 
+type ModelRow = Record<string, unknown>;
+
 type DataModelViewProps = {
   rows: MarketingRow[];
   sourceLabel: string;
   dataContext?: DashboardDataContext;
 };
 
-const modelColumns: Array<{ key: keyof MarketingRow; label: string }> = [
+const fallbackModelColumns: Array<{ key: keyof MarketingRow; label: string }> = [
   { key: 'date', label: 'Date' },
   { key: 'month', label: 'Month' },
   { key: 'year', label: 'Year' },
@@ -26,7 +28,7 @@ const modelColumns: Array<{ key: keyof MarketingRow; label: string }> = [
   { key: 'bookings', label: 'Completed outcomes' },
 ];
 
-function fieldType(key: keyof MarketingRow) {
+function fallbackFieldType(key: keyof MarketingRow) {
   if (key === 'date') {
     return 'date';
   }
@@ -38,11 +40,11 @@ function fieldType(key: keyof MarketingRow) {
   return 'number';
 }
 
-function missingCount(rows: MarketingRow[], key: keyof MarketingRow) {
+function missingCount(rows: ModelRow[], key: string) {
   return rows.filter((row) => row[key] === null || row[key] === undefined || row[key] === '').length;
 }
 
-function distinctCount(rows: MarketingRow[], key: keyof MarketingRow) {
+function distinctCount(rows: ModelRow[], key: string) {
   return new Set(rows.map((row) => String(row[key] ?? ''))).size;
 }
 
@@ -62,24 +64,38 @@ function labelForSlot(dataContext: DashboardDataContext | undefined, slot: strin
 export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
   const previewCount = 700;
   const displayColumns = useMemo(
-    () =>
-      modelColumns.map((column) => ({
+    () => {
+      if (dataContext?.fields.length) {
+        return dataContext.fields.map((field) => ({
+          key: field.name,
+          label: field.label,
+          role: field.role,
+        }));
+      }
+
+      return fallbackModelColumns.map((column) => ({
         ...column,
         label: labelForSlot(dataContext, column.key, column.label),
-      })),
+        role: fallbackFieldType(column.key),
+      }));
+    },
     [dataContext],
   );
-  const previewRows = rows.slice(0, previewCount);
+  const modelRows = useMemo<ModelRow[]>(
+    () => (dataContext?.rawRows?.length ? dataContext.rawRows : rows),
+    [dataContext?.rawRows, rows],
+  );
+  const previewRows = modelRows.slice(0, previewCount);
   const tableMinWidth = displayColumns.length * 165;
   const fieldProfiles = useMemo(() => {
     return displayColumns.reduce<Record<string, { distinct: number; missing: number }>>((profiles, column) => {
       profiles[column.key] = {
-        distinct: distinctCount(rows, column.key),
-        missing: missingCount(rows, column.key),
+        distinct: distinctCount(modelRows, column.key),
+        missing: missingCount(modelRows, column.key),
       };
       return profiles;
     }, {});
-  }, [displayColumns, rows]);
+  }, [displayColumns, modelRows]);
 
   return (
     <div className="grid gap-5">
@@ -97,7 +113,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
           <CardContent className="flex items-center justify-between gap-3 p-5">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-500">Rows</p>
-              <p className="mt-1 text-sm font-semibold text-slate-950">{rows.length.toLocaleString('en-GB')}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">{modelRows.length.toLocaleString('en-GB')}</p>
             </div>
             <Table2 className="h-5 w-5 text-primary" />
           </CardContent>
@@ -127,7 +143,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3" key={column.key}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-semibold text-slate-900">{column.label}</p>
-                  <Badge>{fieldType(column.key)}</Badge>
+                  <Badge>{column.role || 'field'}</Badge>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                   <span>Distinct: {fieldProfiles[column.key]?.distinct ?? 0}</span>
@@ -148,7 +164,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
           <Badge>{previewRows.length.toLocaleString('en-GB')} shown</Badge>
         </CardHeader>
         <CardContent>
-          {rows.length ? (
+          {modelRows.length ? (
             <>
               <div className="dashboard-scrollbar max-h-[560px] overflow-auto rounded-md border border-slate-200">
               <table className="w-full text-sm" style={{ minWidth: tableMinWidth }}>
@@ -163,10 +179,10 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
                 </thead>
                 <tbody>
                   {previewRows.map((row, index) => (
-                    <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={`${row.date}-${row.brand}-${row.channel}-${index}`}>
+                    <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={index}>
                       {displayColumns.map((column) => (
                         <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key}>
-                          {formatDashboardValue(row[column.key], `${column.key} ${column.label}`)}
+                          {formatDashboardValue(row[column.key] as string | number, `${column.key} ${column.label}`)}
                         </td>
                       ))}
                     </tr>
@@ -180,7 +196,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
               Upload a CSV or Excel file to inspect the model table.
             </div>
           )}
-          {rows.length > previewRows.length && (
+          {modelRows.length > previewRows.length && (
             <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
               <Hash className="h-4 w-4" />
               Showing first {previewRows.length.toLocaleString('en-GB')} rows for browser performance.

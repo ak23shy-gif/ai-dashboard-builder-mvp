@@ -17,6 +17,7 @@ export type DashboardDataContext = {
   sourceType: ImportedDataset['sourceType'];
   rawRowCount: number;
   processedRowCount: number;
+  rawRows?: Array<Record<string, unknown>>;
   grain?: string;
   timeRange?: {
     label: string;
@@ -817,6 +818,7 @@ export function createDataContext({
     sourceType,
     rawRowCount,
     processedRowCount,
+    rawRows,
     grain,
     timeRange,
     fields,
