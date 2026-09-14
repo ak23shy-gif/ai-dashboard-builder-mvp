@@ -40,6 +40,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'kpi' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   metric: { enum: ['leads', 'valuations', 'sessions', 'bookings', 'conversionRate'] },
                   change: { type: 'string' },
                   trend: { enum: ['up', 'down'] },
@@ -53,6 +54,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'line_chart' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { const: 'monthly' },
                   xAxis: { const: 'month' },
                   series: {
@@ -79,6 +81,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'area_chart' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { const: 'monthly' },
                   xAxis: { const: 'month' },
                   series: {
@@ -105,6 +108,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'bar_chart' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand'] },
                   xAxis: { enum: ['channel', 'brand'] },
                   yAxis: { enum: ['leads', 'valuations', 'sessions', 'bookings'] },
@@ -119,6 +123,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'horizontal_bar_chart' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand'] },
                   xAxis: { enum: ['leads', 'valuations', 'sessions', 'bookings'] },
                   yAxis: { enum: ['channel', 'brand'] },
@@ -133,6 +138,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'pie_chart' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand'] },
                   nameKey: { enum: ['channel', 'brand'] },
                   valueKey: { enum: ['leads', 'valuations', 'sessions', 'bookings'] },
@@ -146,6 +152,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'gauge' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   metric: { enum: ['leads', 'valuations', 'sessions', 'bookings', 'conversionRate'] },
                   target: { type: 'number' },
                 },
@@ -158,6 +165,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'funnel' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { const: 'summary' },
                   stages: {
                     type: 'array',
@@ -183,6 +191,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'heatmap' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { const: 'monthly' },
                   metrics: {
                     type: 'array',
@@ -199,6 +208,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'text_box' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   content: { type: 'string' },
                 },
               },
@@ -210,6 +220,7 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'data_table' },
                   title: { type: 'string' },
+                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand', 'monthly'] },
                   columns: {
                     type: 'array',
@@ -266,6 +277,7 @@ Dashboard planning process:
    - Keep high-cardinality dimensions in ranked bars or tables, not crowded pies.
    - Never use ID, key, hash, code, SKU, reference or internal database columns as summed measures or default chart axes.
 6. Deliver a dashboard that enables decisions, not a grid of everything measurable.
+7. For every non-filter component, include a short rationale explaining why that visual exists and what question it answers.
 
 Formatting and semantic rules:
 - Do not display IDs with units. IDs should remain plain numbers/text and should normally be hidden from visuals.

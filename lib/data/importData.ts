@@ -55,6 +55,7 @@ export type AnalystBrief = {
   comparisons: string[];
   filters: string[];
   warnings: string[];
+  anomalies: string[];
   layout: string[];
 };
 
@@ -243,6 +244,7 @@ function createAnalystBrief({
   fileName,
   grain,
   mappedColumns,
+  processedRows,
   sourceType,
   timeRange,
 }: {
@@ -250,6 +252,7 @@ function createAnalystBrief({
   fileName: string;
   grain: string;
   mappedColumns: ImportedDataset['mappedColumns'];
+  processedRows: MarketingRow[];
   sourceType: ImportedDataset['sourceType'];
   timeRange?: DashboardDataContext['timeRange'];
 }): AnalystBrief {
@@ -313,6 +316,7 @@ function createAnalystBrief({
       ...filterFields.map((field) => field.label),
     ].filter((value): value is string => Boolean(value)),
     warnings,
+    anomalies: detectAnalystAnomalies(processedRows, kpiFields, mappedColumns),
     layout: [
       'Header: source, row count, detected grain, time range and global filters.',
       'Row 1: 3-5 KPI cards using only valid measure fields.',
@@ -320,6 +324,48 @@ function createAnalystBrief({
       'Row 3: diagnostic tables for high-cardinality detail and QA.',
     ],
   };
+}
+
+function detectAnalystAnomalies(rows: MarketingRow[], kpiFields: DataFieldProfile[], mappedColumns: ImportedDataset['mappedColumns']) {
+  if (rows.length < 4 || !kpiFields.length || (!mappedColumns.date && !mappedColumns.month && !mappedColumns.year)) {
+    return [];
+  }
+
+  const metricSlot = Object.entries(mappedColumns).find(([, column]) => column === kpiFields[0]?.name)?.[0] as
+    | keyof ImportedDataset['mappedColumns']
+    | undefined;
+  const metricKey = ['leads', 'valuations', 'sessions', 'bookings'].includes(String(metricSlot)) ? (metricSlot as 'leads' | 'valuations' | 'sessions' | 'bookings') : 'leads';
+  const monthlyTotals = Array.from(
+    rows
+      .reduce((groups, row) => {
+        const key = `${row.year}-${String(row.monthIndex).padStart(2, '0')}`;
+        const current = groups.get(key) || { label: `${row.month} ${row.year}`, value: 0 };
+        current.value += row[metricKey];
+        groups.set(key, current);
+        return groups;
+      }, new Map<string, { label: string; value: number }>())
+      .values(),
+  );
+
+  if (monthlyTotals.length < 4) {
+    return [];
+  }
+
+  const values = monthlyTotals.map((item) => item.value);
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length;
+  const standardDeviation = Math.sqrt(variance);
+
+  if (!standardDeviation) {
+    return [];
+  }
+
+  return monthlyTotals
+    .map((item) => ({ ...item, zScore: (item.value - average) / standardDeviation }))
+    .filter((item) => Math.abs(item.zScore) >= 1.8)
+    .sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore))
+    .slice(0, 3)
+    .map((item) => `${item.label} is ${item.zScore > 0 ? 'above' : 'below'} the usual range for ${kpiFields[0].label}.`);
 }
 
 function isCostLikeColumn(column: string | undefined) {
@@ -632,6 +678,7 @@ export function createDataContext({
       fileName,
       grain,
       mappedColumns,
+      processedRows,
       sourceType,
       timeRange,
     }),

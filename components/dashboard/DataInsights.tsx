@@ -33,8 +33,8 @@ export function DataInsights({ dataContext, dimensionCount, recordCount, summary
     },
     {
       label: 'Model warnings',
-      value: brief?.warnings.length ? String(brief.warnings.length) : '0',
-      detail: brief?.warnings[0] || 'No obvious ID/rate aggregation issue detected',
+      value: brief?.warnings.length || brief?.anomalies.length ? String((brief?.warnings.length || 0) + (brief?.anomalies.length || 0)) : '0',
+      detail: brief?.anomalies[0] || brief?.warnings[0] || 'No obvious ID/rate aggregation issue detected',
       icon: AlertTriangle,
     },
   ];

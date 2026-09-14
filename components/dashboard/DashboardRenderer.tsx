@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, AlertTriangle, CheckCircle2, Edit3, Gauge, Layers3, Percent, Repeat2, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Edit3, Gauge, Info, Layers3, Percent, Repeat2, Trash2 } from 'lucide-react';
 import { AreaChartCard } from '@/components/dashboard/AreaChartCard';
 import { BarChartCard } from '@/components/dashboard/BarChartCard';
 import { DataTable } from '@/components/dashboard/DataTable';
@@ -270,6 +270,19 @@ function ComponentToolbar({
   );
 }
 
+function VisualRationale({ rationale }: { rationale?: string }) {
+  if (!rationale) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex items-start gap-2 rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-xs leading-5 text-slate-500">
+      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+      <span>{rationale}</span>
+    </div>
+  );
+}
+
 export function DashboardRenderer({
   config,
   data,
@@ -293,6 +306,7 @@ export function DashboardRenderer({
               onUpdateComponent={onUpdateComponent}
             />
             {renderKpi(component, summary)}
+            <VisualRationale rationale={component.rationale} />
           </div>
         ))}
       </div>
@@ -333,6 +347,7 @@ export function DashboardRenderer({
             ].includes(component.type) && (
               <UnsupportedComponent title={component.title} />
             )}
+            <VisualRationale rationale={component.rationale} />
           </div>
         ))}
       </div>
