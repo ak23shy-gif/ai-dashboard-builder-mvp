@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Database, Hash, MoveHorizontal, Rows3, Table2 } from 'lucide-react';
+import { Columns3, Database, Hash, Rows3, Table2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDashboardValue } from '@/lib/data/dataProcessor';
@@ -61,9 +61,9 @@ function labelForSlot(dataContext: DashboardDataContext | undefined, slot: strin
 
 export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
   const [previewCount, setPreviewCount] = useState(250);
-  const [horizontalPosition, setHorizontalPosition] = useState(0);
-  const [maxHorizontalPosition, setMaxHorizontalPosition] = useState(0);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
   const tableViewportRef = useRef<HTMLDivElement>(null);
+  const topScrollbarRef = useRef<HTMLDivElement>(null);
   const displayColumns = useMemo(
     () =>
       modelColumns.map((column) => ({
@@ -91,29 +91,25 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
       return;
     }
 
-    function updateHorizontalLimit() {
-      const nextMax = Math.max(0, tableViewportRef.current ? tableViewportRef.current.scrollWidth - tableViewportRef.current.clientWidth : 0);
-      setMaxHorizontalPosition(nextMax);
-      setHorizontalPosition((current) => Math.min(current, nextMax));
+    function updateHorizontalScrollWidth() {
+      setTableScrollWidth(tableViewportRef.current?.scrollWidth || 0);
     }
 
-    updateHorizontalLimit();
-    window.addEventListener('resize', updateHorizontalLimit);
+    updateHorizontalScrollWidth();
+    window.addEventListener('resize', updateHorizontalScrollWidth);
 
-    return () => window.removeEventListener('resize', updateHorizontalLimit);
+    return () => window.removeEventListener('resize', updateHorizontalScrollWidth);
   }, [displayColumns.length, previewRows.length, tableMinWidth]);
 
-  function handleHorizontalPositionChange(value: number) {
-    setHorizontalPosition(value);
-
-    if (tableViewportRef.current) {
-      tableViewportRef.current.scrollLeft = value;
+  function syncTableFromTopScrollbar() {
+    if (tableViewportRef.current && topScrollbarRef.current) {
+      tableViewportRef.current.scrollLeft = topScrollbarRef.current.scrollLeft;
     }
   }
 
   function handleTableScroll() {
-    if (tableViewportRef.current) {
-      setHorizontalPosition(tableViewportRef.current.scrollLeft);
+    if (tableViewportRef.current && topScrollbarRef.current) {
+      topScrollbarRef.current.scrollLeft = tableViewportRef.current.scrollLeft;
     }
   }
 
@@ -202,22 +198,14 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
                     value={Math.min(previewCount, Math.min(rows.length, 1000))}
                   />
                 </label>
-                <label className="grid gap-2 text-xs font-medium text-muted-foreground">
-                  <span className="flex items-center gap-2">
-                    <MoveHorizontal className="h-4 w-4" />
-                    Table position
-                  </span>
-                  <input
-                    className="accent-primary"
-                    disabled={maxHorizontalPosition === 0}
-                    max={maxHorizontalPosition}
-                    min={0}
-                    onChange={(event) => handleHorizontalPositionChange(Number(event.target.value))}
-                    step={25}
-                    type="range"
-                    value={Math.min(horizontalPosition, maxHorizontalPosition)}
-                  />
-                </label>
+              </div>
+
+              <div
+                className="mb-2 overflow-x-auto overflow-y-hidden rounded-md border border-slate-200 bg-slate-50"
+                onScroll={syncTableFromTopScrollbar}
+                ref={topScrollbarRef}
+              >
+                <div className="h-4" style={{ width: tableScrollWidth || tableMinWidth }} />
               </div>
 
               <div
