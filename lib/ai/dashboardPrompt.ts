@@ -313,6 +313,7 @@ Important: The slot names are internal renderer names. Use the dashboard's exist
 Do not expose labels such as Leads, Brand or Channel unless the active dataset or user prompt actually uses those terms.
 When activeDataContext is provided:
 - Treat it as the source of truth for available fields and meanings.
+- Read activeDataContext.analystBrief first. Use its domain, grain, KPI formulas, comparisons, filters, layout and warnings as the analyst plan before creating visuals.
 - Use fields marked identifier only for lookup/detail tables when specifically useful; do not chart or sum them.
 - Use fields marked currency as monetary KPIs/charts and keep their clean labels in visual titles.
 - Use fields marked percentage only as non-additive KPIs unless the user asks for detailed rates.

@@ -113,6 +113,7 @@ export function DashboardCanvas({
             {hasConnectedData && <Filters brands={brandOptions} channels={channelOptions} filters={filters} onChange={setFilters} />}
             {hasConnectedData && (
               <DataInsights
+                dataContext={dataContext}
                 dimensionCount={brandOptions.length + channelOptions.length}
                 recordCount={filteredRows.length}
                 summary={summary}

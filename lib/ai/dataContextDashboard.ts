@@ -216,36 +216,37 @@ function layoutPlan(dataContext: DashboardDataContext) {
 }
 
 function textBox(dataContext: DashboardDataContext, prompt: string): TextBoxComponentConfig {
+  const brief = dataContext.analystBrief;
   const businessQuestion =
-    prompt.trim() || 'Assumption: identify what is performing best or worst, what changed over time, and which category needs action.';
-  const audience = 'Assumption: business users and analysts who need a quick read plus enough detail to investigate.';
+    prompt.trim() || brief?.businessQuestion || 'Assumption: identify what is performing best or worst, what changed over time, and which category needs action.';
+  const audience = brief?.audience || 'Assumption: business users and analysts who need a quick read plus enough detail to investigate.';
 
   return {
-    id: 'insights_overview',
+    id: 'analyst_plan',
     type: 'text_box',
-    title: 'Dashboard Architecture Plan',
+    title: 'Analyst Plan',
     content: [
       'Phase 1: Business Objective & KPIs',
       `Objective: ${businessQuestion}`,
-      `Domain/source: ${inferDomain(dataContext)} from ${dataContext.sourceName} (${dataContext.sourceType.toUpperCase()}).`,
+      `Domain/source: ${brief?.domain || inferDomain(dataContext)} from ${dataContext.sourceName} (${dataContext.sourceType.toUpperCase()}).`,
       `Audience: ${audience}`,
-      `Top-line KPI cards:\n${kpiDefinitions(dataContext)}`,
+      `Top-line KPI cards:\n${brief?.kpis.length ? brief.kpis.map((kpi) => `- ${kpi.label} = ${kpi.formula}; ${kpi.reason}`).join('\n') : kpiDefinitions(dataContext)}`,
       '',
       'Phase 2: Data Model & Metric Logic',
       `Data dictionary & scoping:\n${fieldList(dataContext)}`,
-      `Grain: ${dataContext.grain || 'one source row or event record'}.`,
+      `Grain: ${brief?.grain || dataContext.grain || 'one source row or event record'}.`,
       `Time range & frequency: ${dataContext.timeRange?.label || 'not detected'}; ${dataContext.timeRange?.frequency || 'not detected'}.`,
-      `Filter controls:\n${filterPlan(dataContext)}`,
+      `Filter controls:\n${brief?.filters.length ? brief.filters.map((filter) => `- ${filter}`).join('\n') : filterPlan(dataContext)}`,
       '',
       'Phase 3: Visual Hierarchy & Page Layout',
-      layoutPlan(dataContext),
+      brief?.layout.length ? brief.layout.map((item, index) => `${index + 1}. ${item}`).join('\n') : layoutPlan(dataContext),
       '',
       'Phase 4: Automated Analytical Insights',
-      `Dynamic comparisons:\n${comparisonPlan(dataContext)}`,
+      `Dynamic comparisons:\n${brief?.comparisons.length ? brief.comparisons.map((item) => `- ${item}`).join('\n') : comparisonPlan(dataContext)}`,
       `Anomaly logic: ${outlierPlan(dataContext)}`,
       '',
       'Phase 5: Visual QA & Misuse Prevention',
-      visualRationale(dataContext),
+      `${visualRationale(dataContext)}\n${brief?.warnings.length ? `\nWarnings:\n${brief.warnings.map((warning) => `- ${warning}`).join('\n')}` : ''}`,
     ].join('\n'),
     layout: { className: 'xl:col-span-2' },
   };
@@ -255,8 +256,8 @@ function titleForPrompt(prompt: string, dataContext: DashboardDataContext) {
   const promptText = normalise(prompt);
   const sourceBase = dataContext.sourceName.replace(/\.[^.]+$/, '');
 
-  if (promptText.includes('insight')) {
-    return `${cleanLabel(sourceBase, 'Dataset')} Insights`;
+  if (promptText.includes('plan') || promptText.includes('architecture')) {
+    return `${cleanLabel(sourceBase, 'Dataset')} Analyst Plan`;
   }
 
   if (/\b(exec|executive|overview|summary)\b/.test(promptText)) {

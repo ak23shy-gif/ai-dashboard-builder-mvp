@@ -36,6 +36,26 @@ export type DashboardDataContext = {
     primary?: string;
     secondary?: string;
   };
+  analystBrief?: AnalystBrief;
+};
+
+export type AnalystBrief = {
+  domain: string;
+  grain: string;
+  businessQuestion: string;
+  audience: string;
+  kpis: Array<{
+    label: string;
+    sourceColumn: string;
+    formula: string;
+    aggregation: 'SUM' | 'AVERAGE' | 'DISTINCTCOUNT' | 'RATIO' | 'NONE';
+    role: DataFieldRole;
+    reason: string;
+  }>;
+  comparisons: string[];
+  filters: string[];
+  warnings: string[];
+  layout: string[];
 };
 
 export type ImportedDataset = {
@@ -150,6 +170,156 @@ function isCurrencyLikeColumn(column: string | undefined) {
 
   const normalised = normaliseHeader(column);
   return valueMeasureAliases.some((alias) => normalised === alias || matchesAlias(normalised, alias));
+}
+
+function inferDomain(columns: string[], fileName: string) {
+  const text = normaliseHeader(`${fileName} ${columns.join(' ')}`);
+
+  if (/\b(order|sales|revenue|profit|customer|retail|invoice|product)\b/.test(text)) {
+    return 'Commercial / transaction performance data';
+  }
+
+  if (/\b(employee|hr|salary|department|absence|attrition|headcount)\b/.test(text)) {
+    return 'HR / workforce data';
+  }
+
+  if (/\b(patient|clinic|health|appointment|diagnosis|treatment)\b/.test(text)) {
+    return 'Healthcare / service activity data';
+  }
+
+  if (/\b(shipment|delivery|warehouse|route|carrier|stock|inventory)\b/.test(text)) {
+    return 'Logistics / operations data';
+  }
+
+  if (/\b(session|campaign|lead|channel|traffic|conversion|website|ga4|analytics)\b/.test(text)) {
+    return 'Marketing / digital analytics data';
+  }
+
+  if (/\b(ticket|case|incident|sla|priority|status|resolved)\b/.test(text)) {
+    return 'Service / support operations data';
+  }
+
+  return 'General business dataset';
+}
+
+function shouldUseAsKpi(field: DataFieldProfile) {
+  const name = normaliseHeader(field.name);
+
+  if (field.role === 'identifier' || field.role === 'date' || field.role === 'unknown') {
+    return false;
+  }
+
+  if (/\b(id|key|code|sku|reference|latitude|longitude|postal|zip)\b/.test(name)) {
+    return false;
+  }
+
+  return ['measure', 'currency', 'percentage'].includes(field.role);
+}
+
+function aggregationForRole(field: DataFieldProfile): AnalystBrief['kpis'][number]['aggregation'] {
+  if (field.role === 'percentage') {
+    return 'AVERAGE';
+  }
+
+  if (field.role === 'currency' || field.role === 'measure') {
+    return 'SUM';
+  }
+
+  return 'NONE';
+}
+
+function formulaForField(field: DataFieldProfile) {
+  const aggregation = aggregationForRole(field);
+
+  if (aggregation === 'NONE') {
+    return 'Not used as a KPI';
+  }
+
+  return `${aggregation}([${field.name}])`;
+}
+
+function createAnalystBrief({
+  fields,
+  fileName,
+  grain,
+  mappedColumns,
+  sourceType,
+  timeRange,
+}: {
+  fields: DataFieldProfile[];
+  fileName: string;
+  grain: string;
+  mappedColumns: ImportedDataset['mappedColumns'];
+  sourceType: ImportedDataset['sourceType'];
+  timeRange?: DashboardDataContext['timeRange'];
+}): AnalystBrief {
+  const kpiFields = fields
+    .filter(shouldUseAsKpi)
+    .sort((a, b) => {
+      const score = (field: DataFieldProfile) => {
+        const name = normaliseHeader(field.name);
+        return (
+          (field.role === 'currency' ? 5 : 0) +
+          (field.role === 'measure' ? 4 : 0) +
+          (field.role === 'percentage' ? 2 : 0) +
+          (/\b(revenue|sales|profit|sessions|users|orders|cost|amount|units|quantity)\b/.test(name) ? 4 : 0) -
+          (/\b(discount|tax|latitude|longitude)\b/.test(name) ? 3 : 0)
+        );
+      };
+
+      return score(b) - score(a);
+    })
+    .slice(0, 5);
+  const dateField = fields.find((field) => field.name === mappedColumns.date || field.name === mappedColumns.month);
+  const filterFields = fields
+    .filter((field) => field.role === 'dimension' && field.distinctValues > 1 && field.distinctValues <= 50)
+    .slice(0, 4);
+  const warnings = fields
+    .filter((field) => field.role === 'identifier')
+    .slice(0, 5)
+    .map((field) => `${field.label} looks like an ID/key, so it should be used for detail lookup or distinct counts, not summed with K/M/B units.`);
+
+  if (fields.some((field) => field.role === 'percentage')) {
+    warnings.push('Percentage/rate fields are non-additive. Recalculate from numerator and denominator when available; otherwise use averages carefully.');
+  }
+
+  if (!kpiFields.length) {
+    warnings.push('No reliable numeric KPI fields were detected, so the dashboard should focus on data inspection until measures are defined.');
+  }
+
+  return {
+    domain: inferDomain(fields.map((field) => field.name), fileName),
+    grain,
+    businessQuestion: 'Assumption: identify current performance, key drivers, trends, outliers and records needing follow-up.',
+    audience: 'Assumption: business users and analysts who need a quick executive view plus drill-down detail.',
+    kpis: kpiFields.map((field) => ({
+      label: field.label,
+      sourceColumn: field.name,
+      formula: formulaForField(field),
+      aggregation: aggregationForRole(field),
+      role: field.role,
+      reason:
+        field.role === 'percentage'
+          ? 'Useful as an efficiency/quality indicator, but must not be summed.'
+          : 'Useful as a top-line additive measure for performance monitoring.',
+    })),
+    comparisons: [
+      dateField ? `Trend over time by ${dateField.label}, grouped to the detected period frequency.` : 'No reliable date field detected, so time trend visuals should be omitted.',
+      filterFields[0] && kpiFields[0] ? `${kpiFields[0].label} by ${filterFields[0].label}, sorted highest to lowest.` : 'Category comparison depends on a low-cardinality dimension and a reliable measure.',
+      filterFields[1] && kpiFields[0] ? `${kpiFields[0].label} by ${filterFields[1].label}, used as a secondary driver view.` : 'Secondary breakdown omitted unless another useful category exists.',
+    ].filter(Boolean),
+    filters: [
+      dateField?.label,
+      ...filterFields.map((field) => field.label),
+    ].filter((value): value is string => Boolean(value)),
+    warnings,
+    layout: [
+      'Header: source, row count, detected grain, time range and global filters.',
+      'Row 1: 3-5 KPI cards using only valid measure fields.',
+      'Row 2: trend and main driver breakdowns, only where matching date/category fields exist.',
+      'Row 3: diagnostic tables for high-cardinality detail and QA.',
+    ],
+  };
 }
 
 function isCostLikeColumn(column: string | undefined) {
@@ -402,46 +572,50 @@ export function createDataContext({
     {},
   );
 
+  const fields = columns.map((column) => {
+    const sampleValues = Array.from(
+      new Set(
+        rawRows
+          .map((row) => String(row[column] ?? '').trim())
+          .filter(Boolean)
+          .slice(0, 20),
+      ),
+    ).slice(0, 3);
+    const mappedTo = mappedEntries[column];
+    const role: DataFieldRole = isIdentifierColumn(column)
+      ? 'identifier'
+      : isDateLikeColumn(column) || ['date', 'month', 'year'].includes(String(mappedTo))
+        ? 'date'
+        : isPercentageLikeColumn(column)
+          ? 'percentage'
+          : isCurrencyLikeColumn(column)
+            ? 'currency'
+            : ['brand', 'channel'].includes(String(mappedTo))
+              ? 'dimension'
+              : findNumericColumns(rawRows, [column]).length
+                ? 'measure'
+                : 'unknown';
+
+    return {
+      name: column,
+      label: cleanFieldLabel(column),
+      role,
+      mappedTo,
+      distinctValues: distinctCount(rawRows, column),
+      sampleValues,
+    };
+  });
+  const grain = inferGrain(columns, mappedColumns);
+  const timeRange = inferTimeRange(processedRows, mappedColumns);
+
   return {
     sourceName: fileName,
     sourceType,
     rawRowCount,
     processedRowCount,
-    grain: inferGrain(columns, mappedColumns),
-    timeRange: inferTimeRange(processedRows, mappedColumns),
-    fields: columns.map((column) => {
-      const sampleValues = Array.from(
-        new Set(
-          rawRows
-            .map((row) => String(row[column] ?? '').trim())
-            .filter(Boolean)
-            .slice(0, 20),
-        ),
-      ).slice(0, 3);
-      const mappedTo = mappedEntries[column];
-      const role: DataFieldRole = isIdentifierColumn(column)
-        ? 'identifier'
-        : isDateLikeColumn(column) || ['date', 'month', 'year'].includes(String(mappedTo))
-          ? 'date'
-          : isPercentageLikeColumn(column)
-            ? 'percentage'
-            : isCurrencyLikeColumn(column)
-              ? 'currency'
-              : ['brand', 'channel'].includes(String(mappedTo))
-                ? 'dimension'
-                : findNumericColumns(rawRows, [column]).length
-                  ? 'measure'
-                  : 'unknown';
-
-      return {
-        name: column,
-        label: cleanFieldLabel(column),
-        role,
-        mappedTo,
-        distinctValues: distinctCount(rawRows, column),
-        sampleValues,
-      };
-    }),
+    grain,
+    timeRange,
+    fields,
     metricSlots: {
       leads: mappedColumns.leads,
       valuations: mappedColumns.valuations,
@@ -453,6 +627,14 @@ export function createDataContext({
       primary: mappedColumns.brand,
       secondary: mappedColumns.channel,
     },
+    analystBrief: createAnalystBrief({
+      fields,
+      fileName,
+      grain,
+      mappedColumns,
+      sourceType,
+      timeRange,
+    }),
   };
 }
 
