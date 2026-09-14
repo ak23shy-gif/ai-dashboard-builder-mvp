@@ -319,7 +319,6 @@ export function DashboardRenderer({
               onUpdateComponent={onUpdateComponent}
             />
             {renderKpi(component, summary)}
-            <VisualRationale rationale={component.rationale} />
           </div>
         ))}
       </div>

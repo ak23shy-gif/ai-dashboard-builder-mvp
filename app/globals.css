@@ -68,6 +68,31 @@ button {
   max-width: 100%;
 }
 
+.dashboard-scrollbar {
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+  scrollbar-width: auto;
+}
+
+.dashboard-scrollbar::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+.dashboard-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 999px;
+}
+
+.dashboard-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.72);
+  border: 3px solid hsl(var(--muted));
+  border-radius: 999px;
+}
+
+.dashboard-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground) / 0.78);
+}
+
 [data-theme='dark'] body {
   background:
     radial-gradient(circle at 20% 0%, hsl(190 80% 18% / 0.22), transparent 32rem),

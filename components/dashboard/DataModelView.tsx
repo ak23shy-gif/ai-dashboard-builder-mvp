@@ -201,15 +201,15 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
               </div>
 
               <div
-                className="mb-2 overflow-x-auto overflow-y-hidden rounded-md border border-slate-200 bg-slate-50"
+                className="dashboard-scrollbar mb-2 overflow-x-scroll overflow-y-hidden rounded-md border border-slate-200 bg-slate-50"
                 onScroll={syncTableFromTopScrollbar}
                 ref={topScrollbarRef}
               >
-                <div className="h-4" style={{ width: tableScrollWidth || tableMinWidth }} />
+                <div className="h-5" style={{ width: tableScrollWidth || tableMinWidth }} />
               </div>
 
               <div
-                className="max-h-[560px] overflow-auto rounded-md border border-slate-200"
+                className="dashboard-scrollbar max-h-[560px] overflow-auto rounded-md border border-slate-200"
                 onScroll={handleTableScroll}
                 ref={tableViewportRef}
               >
