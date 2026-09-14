@@ -163,16 +163,20 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
           </div>
           <Badge>{previewRows.length.toLocaleString('en-GB')} shown</Badge>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           {modelRows.length ? (
-            <>
-              <div className="dashboard-scrollbar max-h-[560px] overflow-auto rounded-md border border-slate-200">
-              <table className="w-full text-sm" style={{ minWidth: tableMinWidth }}>
+            <div className="dashboard-scrollbar h-[560px] w-full max-w-full overflow-auto rounded-md border border-slate-200">
+              <table className="table-fixed text-sm" style={{ width: tableMinWidth }}>
+                <colgroup>
+                  {displayColumns.map((column) => (
+                    <col key={column.key} style={{ width: 165 }} />
+                  ))}
+                </colgroup>
                 <thead className="sticky top-0 bg-slate-50">
                   <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
                     {displayColumns.map((column) => (
-                      <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key}>
-                        {column.label}
+                      <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key} title={column.label}>
+                        <span className="block truncate">{column.label}</span>
                       </th>
                     ))}
                   </tr>
@@ -180,17 +184,20 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
                 <tbody>
                   {previewRows.map((row, index) => (
                     <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={index}>
-                      {displayColumns.map((column) => (
-                        <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key}>
-                          {formatDashboardValue(row[column.key] as string | number, `${column.key} ${column.label}`)}
-                        </td>
-                      ))}
+                      {displayColumns.map((column) => {
+                        const displayValue = formatDashboardValue(row[column.key] as string | number, `${column.key} ${column.label}`);
+
+                        return (
+                          <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key} title={String(displayValue)}>
+                            <span className="block truncate">{displayValue}</span>
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
               </table>
-              </div>
-            </>
+            </div>
           ) : (
             <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
               Upload a CSV or Excel file to inspect the model table.

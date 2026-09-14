@@ -71,6 +71,7 @@ button {
 .dashboard-scrollbar {
   scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
   scrollbar-width: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 .dashboard-scrollbar::-webkit-scrollbar {
