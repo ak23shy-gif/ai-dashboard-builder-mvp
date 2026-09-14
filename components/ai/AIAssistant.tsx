@@ -46,6 +46,14 @@ type DashboardApiResult = {
   warning?: string;
 };
 
+function compactWarning(warning: string | undefined) {
+  if (!warning) {
+    return '';
+  }
+
+  return warning.length > 150 ? `${warning.slice(0, 147).trim()}...` : warning;
+}
+
 async function readDashboardApiResult(response: Response): Promise<DashboardApiResult> {
   const contentType = response.headers.get('content-type') || '';
   const text = await response.text();
@@ -126,10 +134,11 @@ export function AIAssistant({
         result.source === 'local' ? 'Local planner' : result.source === 'gemini' ? 'Gemini' : 'OpenAI';
 
       setStatus('success');
+      const warning = compactWarning(result.warning);
       setMessage(
         `${sourceLabel} generated and rendered: ${result.dashboard?.title || 'Untitled dashboard'} with ${
           result.dashboard?.components?.length || 0
-        } components.${result.warning ? ` ${result.warning}` : ''}`,
+        } components.${warning ? ` ${warning}` : ''}`,
       );
     } catch (error) {
       setStatus('error');

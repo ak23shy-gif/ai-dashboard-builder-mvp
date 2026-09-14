@@ -47,10 +47,6 @@ type GeminiResponse = {
   };
 };
 
-function uniqueValues<T>(values: T[]) {
-  return Array.from(new Set(values.filter(Boolean)));
-}
-
 function timeoutSignal() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
@@ -233,77 +229,73 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
 }
 
 async function generateWithGemini(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
-  const models = uniqueValues([
-    'gemini-3.5-flash-lite',
-    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-    'gemini-3.8-flash',
-    'gemini-3.6-flash',
-    'gemini-3.5-flash',
-    'gemini-2.5-flash',
-  ]);
-  const failures: string[] = [];
-
-  for (const model of models) {
-    const { signal, timeout } = timeoutSignal();
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        signal,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: `${buildDashboardSystemPrompt()}\n\nReturn a single JSON object with this shape: {"dashboard": {...}}.\n\n${buildDashboardUserPrompt(
-                    prompt,
-                    currentDashboard,
-                    dataContext,
-                  )}`,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.2,
-            maxOutputTokens: 4096,
-            thinkingConfig: geminiThinkingConfig(model),
-          },
-        }),
+  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+  const { signal, timeout } = timeoutSignal();
+  const geminiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
       },
-    ).finally(() => clearTimeout(timeout));
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `${buildDashboardSystemPrompt()}\n\nReturn only valid JSON with this exact outer shape: {"dashboard": {...}}. Do not use markdown fences or explanatory text.\n\n${buildDashboardUserPrompt(
+                  prompt,
+                  currentDashboard,
+                  dataContext,
+                )}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+          thinkingConfig: geminiThinkingConfig(model),
+        },
+      }),
+    },
+  ).finally(() => clearTimeout(timeout));
 
-    const result = await readProviderJson<GeminiResponse>(geminiResponse);
+  const result = await readProviderJson<GeminiResponse>(geminiResponse);
 
-    if (!geminiResponse.ok) {
-      failures.push(`${model}: ${result.error?.message || 'request failed'}`);
-      continue;
-    }
+  if (!geminiResponse.ok) {
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      `Gemini is unavailable for the configured model (${model}), so DashForge used the local analyst planner.`,
+      dataContext,
+    );
+  }
 
-    const outputText = extractGeminiOutputText(result);
+  const outputText = extractGeminiOutputText(result);
 
-    if (!outputText) {
-      failures.push(`${model}: empty response`);
-      continue;
-    }
+  if (!outputText) {
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      `Gemini returned an empty response for ${model}, so DashForge used the local analyst planner.`,
+      dataContext,
+    );
+  }
 
-    let parsed: { dashboard?: DashboardConfig };
-
-    try {
-      parsed = parseDashboardPayload(outputText);
-    } catch (error) {
-      failures.push(`${model}: invalid JSON (${error instanceof Error ? error.message : 'parse failed'})`);
-      continue;
-    }
+  try {
+    const parsed = parseDashboardPayload(outputText);
 
     if (!parsed.dashboard) {
-      failures.push(`${model}: response did not include a dashboard`);
-      continue;
+      return localPlannerResponse(
+        prompt,
+        currentDashboard,
+        `Gemini responded without dashboard JSON for ${model}, so DashForge used the local analyst planner.`,
+        dataContext,
+      );
     }
 
     return NextResponse.json({
@@ -311,16 +303,14 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
       source: 'gemini',
       model,
     });
+  } catch {
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      `Gemini returned JSON that did not match the dashboard schema for ${model}, so DashForge used the local analyst planner.`,
+      dataContext,
+    );
   }
-
-  return localPlannerResponse(
-    prompt,
-    currentDashboard,
-    `Local planner used because Gemini did not return a usable dashboard. Tried ${models.join(', ')}. Last issue: ${
-      failures.at(-1) || 'request failed'
-    }`,
-    dataContext,
-  );
 }
 
 function preferredProvider() {
