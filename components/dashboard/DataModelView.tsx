@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Database, Hash, Rows3, Table2 } from 'lucide-react';
+import { useMemo } from 'react';
+import { Columns3, Database, Hash, Table2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDashboardValue } from '@/lib/data/dataProcessor';
@@ -60,10 +60,7 @@ function labelForSlot(dataContext: DashboardDataContext | undefined, slot: strin
 }
 
 export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
-  const [previewCount, setPreviewCount] = useState(250);
-  const [tableScrollWidth, setTableScrollWidth] = useState(0);
-  const tableViewportRef = useRef<HTMLDivElement>(null);
-  const topScrollbarRef = useRef<HTMLDivElement>(null);
+  const previewCount = 700;
   const displayColumns = useMemo(
     () =>
       modelColumns.map((column) => ({
@@ -83,35 +80,6 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
       return profiles;
     }, {});
   }, [displayColumns, rows]);
-
-  useEffect(() => {
-    const tableViewport = tableViewportRef.current;
-
-    if (!tableViewport) {
-      return;
-    }
-
-    function updateHorizontalScrollWidth() {
-      setTableScrollWidth(tableViewportRef.current?.scrollWidth || 0);
-    }
-
-    updateHorizontalScrollWidth();
-    window.addEventListener('resize', updateHorizontalScrollWidth);
-
-    return () => window.removeEventListener('resize', updateHorizontalScrollWidth);
-  }, [displayColumns.length, previewRows.length, tableMinWidth]);
-
-  function syncTableFromTopScrollbar() {
-    if (tableViewportRef.current && topScrollbarRef.current) {
-      tableViewportRef.current.scrollLeft = topScrollbarRef.current.scrollLeft;
-    }
-  }
-
-  function handleTableScroll() {
-    if (tableViewportRef.current && topScrollbarRef.current) {
-      topScrollbarRef.current.scrollLeft = tableViewportRef.current.scrollLeft;
-    }
-  }
 
   return (
     <div className="grid gap-5">
@@ -182,37 +150,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
         <CardContent>
           {rows.length ? (
             <>
-              <div className="mb-4 grid gap-3 rounded-md border border-border bg-muted p-3">
-                <label className="grid gap-2 text-xs font-medium text-muted-foreground">
-                  <span className="flex items-center gap-2">
-                    <Rows3 className="h-4 w-4" />
-                    Rows shown: {previewCount.toLocaleString('en-GB')}
-                  </span>
-                  <input
-                    className="accent-primary"
-                    max={Math.min(rows.length, 1000)}
-                    min={50}
-                    onChange={(event) => setPreviewCount(Number(event.target.value))}
-                    step={50}
-                    type="range"
-                    value={Math.min(previewCount, Math.min(rows.length, 1000))}
-                  />
-                </label>
-              </div>
-
-              <div
-                className="dashboard-scrollbar mb-2 overflow-x-scroll overflow-y-hidden rounded-md border border-slate-200 bg-slate-50"
-                onScroll={syncTableFromTopScrollbar}
-                ref={topScrollbarRef}
-              >
-                <div className="h-5" style={{ width: tableScrollWidth || tableMinWidth }} />
-              </div>
-
-              <div
-                className="dashboard-scrollbar max-h-[560px] overflow-auto rounded-md border border-slate-200"
-                onScroll={handleTableScroll}
-                ref={tableViewportRef}
-              >
+              <div className="dashboard-scrollbar max-h-[560px] overflow-auto rounded-md border border-slate-200">
               <table className="w-full text-sm" style={{ minWidth: tableMinWidth }}>
                 <thead className="sticky top-0 bg-slate-50">
                   <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
