@@ -1,4 +1,8 @@
-import { AlertCircle, ClipboardList, Lightbulb } from 'lucide-react';
+'use client';
+
+import { useState } from 'react';
+import { AlertCircle, ChevronDown, ChevronUp, ClipboardList, Lightbulb } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import type { DashboardDataContext } from '@/lib/data/importData';
 
@@ -15,23 +19,34 @@ function PanelList({
   items: string[];
   title: string;
 }) {
+  const [isOpen, setIsOpen] = useState(true);
+
   return (
     <Card className="border-slate-200/80 bg-white shadow-none">
       <CardContent className="p-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-primary">
-            <Icon className="h-4 w-4" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-primary">
+              <Icon className="h-4 w-4" />
+            </div>
+            <h2 className="truncate text-sm font-semibold text-slate-950">{title}</h2>
           </div>
-          <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
+          <Button className="h-8 w-8 shrink-0" onClick={() => setIsOpen((current) => !current)} size="icon" variant="ghost" title={isOpen ? `Minimise ${title}` : `Maximise ${title}`}>
+            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
         </div>
-        <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-          {items.map((item) => (
-            <li className="flex gap-2" key={item}>
-              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
+        {isOpen ? (
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+            {items.map((item) => (
+              <li className="flex gap-2" key={item}>
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 truncate text-xs text-slate-500">{items[0]}</p>
+        )}
       </CardContent>
     </Card>
   );
