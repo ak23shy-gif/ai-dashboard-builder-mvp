@@ -66,6 +66,32 @@ function geminiThinkingConfig(model: string) {
   return undefined;
 }
 
+function providerIssue(provider: string, status: number, message: string | undefined) {
+  const detail = message ? ` ${message.slice(0, 180)}` : '';
+
+  if (status === 400) {
+    return `${provider} rejected the request format.${detail}`;
+  }
+
+  if (status === 401 || status === 403) {
+    return `${provider} rejected the API key or project access.${detail}`;
+  }
+
+  if (status === 404) {
+    return `${provider} could not find the configured model.${detail}`;
+  }
+
+  if (status === 429) {
+    return `${provider} quota or rate limit was reached.${detail}`;
+  }
+
+  if (status >= 500) {
+    return `${provider} service returned ${status}.${detail}`;
+  }
+
+  return `${provider} returned ${status}.${detail}`;
+}
+
 async function readProviderJson<T>(response: Response): Promise<T> {
   const text = await response.text();
 
@@ -232,20 +258,28 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
   const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const { signal, timeout } = timeoutSignal();
   const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: 'POST',
       signal,
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': String(process.env.GEMINI_API_KEY),
       },
       body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text: buildDashboardSystemPrompt(),
+            },
+          ],
+        },
         contents: [
           {
             role: 'user',
             parts: [
               {
-                text: `${buildDashboardSystemPrompt()}\n\nReturn only valid JSON with this exact outer shape: {"dashboard": {...}}. Do not use markdown fences or explanatory text.\n\n${buildDashboardUserPrompt(
+                text: `Return only valid JSON with this exact outer shape: {"dashboard": {...}}. Do not use markdown fences or explanatory text.\n\n${buildDashboardUserPrompt(
                   prompt,
                   currentDashboard,
                   dataContext,
@@ -256,7 +290,6 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
         ],
         generationConfig: {
           responseMimeType: 'application/json',
-          temperature: 0.1,
           maxOutputTokens: 4096,
           thinkingConfig: geminiThinkingConfig(model),
         },
@@ -270,7 +303,7 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
     return localPlannerResponse(
       prompt,
       currentDashboard,
-      `Gemini is unavailable for the configured model (${model}), so DashForge used the local analyst planner.`,
+      `${providerIssue('Gemini', geminiResponse.status, result.error?.message)} DashForge used the local analyst planner.`,
       dataContext,
     );
   }
