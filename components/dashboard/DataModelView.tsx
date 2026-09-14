@@ -48,6 +48,30 @@ function distinctCount(rows: ModelRow[], key: string) {
   return new Set(rows.map((row) => String(row[key] ?? ''))).size;
 }
 
+function formatModelCell(value: unknown, context: string) {
+  if (value === null || value === undefined || value === '') {
+    return '';
+  }
+
+  if (typeof value === 'number' || typeof value === 'string') {
+    return String(formatDashboardValue(value, context));
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'True' : 'False';
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function labelForSlot(dataContext: DashboardDataContext | undefined, slot: string, fallback: string) {
   const sourceColumn =
     slot === 'date'
@@ -185,7 +209,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
                   {previewRows.map((row, index) => (
                     <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={index}>
                       {displayColumns.map((column) => {
-                        const displayValue = formatDashboardValue(row[column.key] as string | number, `${column.key} ${column.label}`);
+                        const displayValue = formatModelCell(row[column.key], `${column.key} ${column.label}`);
 
                         return (
                           <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key} title={String(displayValue)}>
