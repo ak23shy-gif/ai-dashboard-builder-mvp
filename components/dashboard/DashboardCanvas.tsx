@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Database } from 'lucide-react';
+import { CalendarDays, Database, Search, Settings, UserRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataInsights } from '@/components/dashboard/DataInsights';
@@ -89,8 +89,50 @@ export function DashboardCanvas({
 
   return (
     <section className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50">
+      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Database className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-950">DashForge</p>
+              <p className="truncate text-xs text-muted-foreground">{hasConnectedData ? 'Live data dashboard' : 'Connect data to begin'}</p>
+            </div>
+          </div>
+          <div className="flex w-full items-center justify-between gap-3 xl:w-auto">
+            <div className="flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-slate-50 p-1">
+              {['Overview', 'Analytics', 'Finance', 'Reports'].map((item, index) => (
+                <button
+                  className={
+                    index === 0
+                      ? 'rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm'
+                      : 'rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground'
+                  }
+                  key={item}
+                  type="button"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button className="h-9 w-9 rounded-full" size="icon" variant="outline" aria-label="Search">
+                <Search className="h-4 w-4" />
+              </Button>
+              <Button className="h-9 w-9 rounded-full" size="icon" variant="outline" aria-label="Settings">
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button className="h-9 w-9 rounded-full" size="icon" variant="secondary" aria-label="Profile">
+                <UserRound className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="border-b border-slate-200 bg-white px-6 py-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -129,7 +171,7 @@ export function DashboardCanvas({
         </div>
       </div>
 
-      <div className="grid gap-5 p-6">
+      <div className="grid gap-4 p-5 xl:p-6">
         {activeView === 'report' ? (
           <>
             {hasConnectedData && <Filters brands={brandOptions} channels={channelOptions} filters={filters} onChange={setFilters} />}

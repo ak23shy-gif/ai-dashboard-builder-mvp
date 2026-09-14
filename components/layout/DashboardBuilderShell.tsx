@@ -35,7 +35,7 @@ export function DashboardBuilderShell() {
   const [dataRows, setDataRows] = useState<MarketingRow[]>([]);
   const [sourceLabel, setSourceLabel] = useState('No data connected');
   const [dataContext, setDataContext] = useState<DashboardDataContext | undefined>();
-  const [activeTheme, setActiveTheme] = useState<AppTheme>('light');
+  const [activeTheme, setActiveTheme] = useState<AppTheme>('dark');
   const [dashboardRenderVersion, setDashboardRenderVersion] = useState(0);
 
   const dashboardConfig = useMemo(

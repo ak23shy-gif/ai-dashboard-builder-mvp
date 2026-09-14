@@ -18,17 +18,17 @@
 }
 
 [data-theme='dark'] {
-  --background: 222 47% 7%;
+  --background: 224 46% 6%;
   --foreground: 210 40% 96%;
-  --card: 222 39% 12%;
+  --card: 222 38% 10%;
   --card-foreground: 210 40% 96%;
-  --muted: 219 34% 17%;
+  --muted: 220 32% 14%;
   --muted-foreground: 215 22% 74%;
-  --primary: 188 86% 48%;
+  --primary: 187 88% 48%;
   --primary-foreground: 222 47% 8%;
-  --accent: 44 88% 60%;
+  --accent: 158 72% 48%;
   --accent-foreground: 222 47% 8%;
-  --border: 218 30% 25%;
+  --border: 219 27% 23%;
 }
 
 [data-theme='midnight'] {
@@ -70,7 +70,8 @@ button {
 
 [data-theme='dark'] body {
   background:
-    linear-gradient(180deg, hsl(222 47% 7%) 0%, hsl(218 42% 9%) 48%, hsl(215 40% 8%) 100%);
+    radial-gradient(circle at 20% 0%, hsl(190 80% 18% / 0.22), transparent 32rem),
+    linear-gradient(180deg, hsl(224 46% 6%) 0%, hsl(222 45% 7%) 52%, hsl(220 42% 6%) 100%);
 }
 
 [data-theme='midnight'] body {
@@ -92,6 +93,20 @@ button {
 [data-theme='dark'] aside,
 [data-theme='midnight'] aside {
   background-color: hsl(var(--card));
+}
+
+[data-theme='dark'] .bg-card,
+[data-theme='midnight'] .bg-card {
+  background-color: hsl(var(--card));
+}
+
+[data-theme='dark'] .shadow-sm,
+[data-theme='dark'] .shadow-md,
+[data-theme='dark'] .shadow-lg,
+[data-theme='midnight'] .shadow-sm,
+[data-theme='midnight'] .shadow-md,
+[data-theme='midnight'] .shadow-lg {
+  box-shadow: 0 18px 46px hsl(220 60% 2% / 0.28);
 }
 
 [data-theme='dark'] .bg-background,
@@ -154,13 +169,6 @@ button {
 [data-theme='midnight'] option {
   background-color: hsl(var(--card));
   color: hsl(var(--foreground));
-}
-
-[data-theme='dark'] .shadow-sm,
-[data-theme='dark'] .shadow-md,
-[data-theme='midnight'] .shadow-sm,
-[data-theme='midnight'] .shadow-md {
-  box-shadow: 0 18px 46px hsl(220 60% 2% / 0.28);
 }
 
 [data-theme='dark'] .hover\:bg-white:hover,
