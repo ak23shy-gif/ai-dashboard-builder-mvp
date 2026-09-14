@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3, Database, Hash, Table2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -87,6 +87,9 @@ function labelForSlot(dataContext: DashboardDataContext | undefined, slot: strin
 
 export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
   const previewCount = 700;
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const tableViewportRef = useRef<HTMLDivElement>(null);
+  const bottomScrollbarRef = useRef<HTMLDivElement>(null);
   const displayColumns = useMemo(
     () => {
       if (dataContext?.fields.length) {
@@ -120,6 +123,29 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
       return profiles;
     }, {});
   }, [displayColumns, modelRows]);
+
+  useEffect(() => {
+    function updateScrollWidth() {
+      setTableScrollWidth(tableViewportRef.current?.scrollWidth || tableMinWidth);
+    }
+
+    updateScrollWidth();
+    window.addEventListener('resize', updateScrollWidth);
+
+    return () => window.removeEventListener('resize', updateScrollWidth);
+  }, [displayColumns.length, previewRows.length, tableMinWidth]);
+
+  function syncTableFromBottomScrollbar() {
+    if (tableViewportRef.current && bottomScrollbarRef.current) {
+      tableViewportRef.current.scrollLeft = bottomScrollbarRef.current.scrollLeft;
+    }
+  }
+
+  function syncBottomScrollbarFromTable() {
+    if (tableViewportRef.current && bottomScrollbarRef.current) {
+      bottomScrollbarRef.current.scrollLeft = tableViewportRef.current.scrollLeft;
+    }
+  }
 
   return (
     <div className="grid gap-5">
@@ -189,38 +215,51 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
         </CardHeader>
         <CardContent className="min-w-0">
           {modelRows.length ? (
-            <div className="dashboard-scrollbar h-[560px] w-full max-w-full overflow-auto rounded-md border border-slate-200">
-              <table className="table-fixed text-sm" style={{ width: tableMinWidth }}>
-                <colgroup>
-                  {displayColumns.map((column) => (
-                    <col key={column.key} style={{ width: 165 }} />
-                  ))}
-                </colgroup>
-                <thead className="sticky top-0 bg-slate-50">
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+            <div className="grid h-[min(560px,calc(100vh-260px))] min-h-[360px] w-full max-w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-md border border-slate-200">
+              <div
+                className="dashboard-scrollbar min-h-0 overflow-y-auto overflow-x-hidden"
+                onScroll={syncBottomScrollbarFromTable}
+                ref={tableViewportRef}
+              >
+                <table className="table-fixed text-sm" style={{ width: tableMinWidth }}>
+                  <colgroup>
                     {displayColumns.map((column) => (
-                      <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key} title={column.label}>
-                        <span className="block truncate">{column.label}</span>
-                      </th>
+                      <col key={column.key} style={{ width: 165 }} />
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row, index) => (
-                    <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={index}>
-                      {displayColumns.map((column) => {
-                        const displayValue = formatModelCell(row[column.key], `${column.key} ${column.label}`);
-
-                        return (
-                          <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key} title={String(displayValue)}>
-                            <span className="block truncate">{displayValue}</span>
-                          </td>
-                        );
-                      })}
+                  </colgroup>
+                  <thead className="sticky top-0 bg-slate-50">
+                    <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                      {displayColumns.map((column) => (
+                        <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key} title={column.label}>
+                          <span className="block truncate">{column.label}</span>
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, index) => (
+                      <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={index}>
+                        {displayColumns.map((column) => {
+                          const displayValue = formatModelCell(row[column.key], `${column.key} ${column.label}`);
+
+                          return (
+                            <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key} title={String(displayValue)}>
+                              <span className="block truncate">{displayValue}</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div
+                className="dashboard-scrollbar h-5 overflow-x-scroll overflow-y-hidden border-t border-slate-200 bg-slate-50"
+                onScroll={syncTableFromBottomScrollbar}
+                ref={bottomScrollbarRef}
+              >
+                <div className="h-1" style={{ width: tableScrollWidth || tableMinWidth }} />
+              </div>
             </div>
           ) : (
             <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
