@@ -56,6 +56,9 @@ export type AnalystBrief = {
   filters: string[];
   warnings: string[];
   anomalies: string[];
+  keyInsights: string[];
+  dashboardPlan: string[];
+  caveats: string[];
   layout: string[];
 };
 
@@ -239,6 +242,142 @@ function formulaForField(field: DataFieldProfile) {
   return `${aggregation}([${field.name}])`;
 }
 
+function formatBriefNumber(value: number) {
+  const absoluteValue = Math.abs(value);
+
+  if (absoluteValue < 10000) {
+    return new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 }).format(value);
+  }
+
+  return new Intl.NumberFormat('en-GB', {
+    notation: 'compact',
+    compactDisplay: 'short',
+    maximumFractionDigits: absoluteValue >= 100000 ? 0 : 1,
+  }).format(value);
+}
+
+function metricKeyForField(field: DataFieldProfile | undefined, mappedColumns: ImportedDataset['mappedColumns']) {
+  const metricSlot = Object.entries(mappedColumns).find(([, column]) => column === field?.name)?.[0];
+  return ['leads', 'valuations', 'sessions', 'bookings'].includes(String(metricSlot))
+    ? (metricSlot as 'leads' | 'valuations' | 'sessions' | 'bookings')
+    : undefined;
+}
+
+function totalsForMetric(rows: MarketingRow[], metricKey: 'leads' | 'valuations' | 'sessions' | 'bookings') {
+  return rows.reduce((total, row) => total + row[metricKey], 0);
+}
+
+function periodTotals(rows: MarketingRow[], metricKey: 'leads' | 'valuations' | 'sessions' | 'bookings') {
+  return Array.from(
+    rows
+      .reduce((groups, row) => {
+        const key = `${row.year}-${String(row.monthIndex).padStart(2, '0')}`;
+        const current = groups.get(key) || { key, label: `${row.month} ${row.year}`, value: 0, monthIndex: row.monthIndex, year: row.year };
+        current.value += row[metricKey];
+        groups.set(key, current);
+        return groups;
+      }, new Map<string, { key: string; label: string; value: number; monthIndex: number; year: number }>())
+      .values(),
+  ).sort((a, b) => a.year - b.year || a.monthIndex - b.monthIndex);
+}
+
+function categoryTotals(rows: MarketingRow[], dimension: 'brand' | 'channel', metricKey: 'leads' | 'valuations' | 'sessions' | 'bookings') {
+  return Array.from(
+    rows
+      .reduce((groups, row) => {
+        const key = String(row[dimension] || 'Uncategorised');
+        groups.set(key, (groups.get(key) || 0) + row[metricKey]);
+        return groups;
+      }, new Map<string, number>())
+      .entries(),
+  )
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function median(values: number[]) {
+  if (!values.length) {
+    return 0;
+  }
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function buildInsightNarrative({
+  fields,
+  kpiFields,
+  mappedColumns,
+  processedRows,
+}: {
+  fields: DataFieldProfile[];
+  kpiFields: DataFieldProfile[];
+  mappedColumns: ImportedDataset['mappedColumns'];
+  processedRows: MarketingRow[];
+}) {
+  const primaryField = kpiFields[0];
+  const secondaryField = kpiFields[1];
+  const primaryMetric = metricKeyForField(primaryField, mappedColumns);
+  const secondaryMetric = metricKeyForField(secondaryField, mappedColumns);
+  const insights: string[] = [];
+  const caveats: string[] = [];
+
+  if (primaryField && primaryMetric) {
+    const total = totalsForMetric(processedRows, primaryMetric);
+    insights.push(`${primaryField.label} is the main KPI candidate with ${formatBriefNumber(total)} total across the connected rows.`);
+
+    const periods = periodTotals(processedRows, primaryMetric);
+    if (periods.length >= 2) {
+      const first = periods[0];
+      const last = periods[periods.length - 1];
+      const change = first.value ? ((last.value - first.value) / first.value) * 100 : 0;
+      insights.push(`${primaryField.label} moved from ${formatBriefNumber(first.value)} in ${first.label} to ${formatBriefNumber(last.value)} in ${last.label} (${change >= 0 ? '+' : ''}${change.toFixed(1)}%).`);
+    }
+
+    const dimension = mappedColumns.channel ? 'channel' : mappedColumns.brand ? 'brand' : undefined;
+    if (dimension) {
+      const ranked = categoryTotals(processedRows, dimension, primaryMetric);
+      if (ranked[0]) {
+        const bottom = ranked[ranked.length - 1];
+        insights.push(`${ranked[0].label} is the top ${dimension} for ${primaryField.label} at ${formatBriefNumber(ranked[0].value)}${bottom ? `, compared with ${formatBriefNumber(bottom.value)} for ${bottom.label}` : ''}.`);
+      }
+    }
+
+    const values = processedRows.map((row) => row[primaryMetric]).filter((value) => value > 0);
+    if (values.length) {
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      insights.push(`${primaryField.label} has an average row value of ${formatBriefNumber(mean)} and a median of ${formatBriefNumber(median(values))}, showing the spread behind the total.`);
+    }
+  }
+
+  if (primaryField && primaryMetric && secondaryField && secondaryMetric) {
+    const primaryTotal = totalsForMetric(processedRows, primaryMetric);
+    const secondaryTotal = totalsForMetric(processedRows, secondaryMetric);
+    if (primaryTotal) {
+      insights.push(`${secondaryField.label} runs at ${((secondaryTotal / primaryTotal) * 100).toFixed(1)}% of ${primaryField.label}, useful as an efficiency or mix check.`);
+    }
+  }
+
+  fields
+    .filter((field) => field.role === 'identifier')
+    .slice(0, 3)
+    .forEach((field) => caveats.push(`${field.label} appears to be an ID/key and is excluded from KPI totals and chart measures.`));
+
+  if (!mappedColumns.date && !mappedColumns.month && !mappedColumns.year) {
+    caveats.push('No reliable date field was detected, so trend and period-over-period analysis are limited.');
+  }
+
+  if (!kpiFields.length) {
+    caveats.push('No strong numeric KPI candidate was detected. The dashboard should remain a data inspection view until measures are defined.');
+  }
+
+  return {
+    insights: insights.slice(0, 7),
+    caveats,
+  };
+}
+
 function createAnalystBrief({
   fields,
   fileName,
@@ -289,6 +428,22 @@ function createAnalystBrief({
   if (!kpiFields.length) {
     warnings.push('No reliable numeric KPI fields were detected, so the dashboard should focus on data inspection until measures are defined.');
   }
+  const narrative = buildInsightNarrative({ fields, kpiFields, mappedColumns, processedRows });
+  const dashboardPlan = [
+    kpiFields.length
+      ? `Top-left: primary KPI card for ${kpiFields[0].label}, because it is the most decision-critical measure detected.`
+      : 'Top-left: data quality/source status until a reliable KPI is defined.',
+    dateField && kpiFields[0]
+      ? `Top-right/middle: ${kpiFields[0].label} trend over ${dateField.label}, because time movement explains whether performance is improving or declining.`
+      : 'Trend section omitted unless a reliable date field exists.',
+    filterFields[0] && kpiFields[0]
+      ? `Middle: sorted ${kpiFields[0].label} ranking by ${filterFields[0].label}, because it identifies the strongest and weakest driver.`
+      : 'Driver section uses the first useful category only when one is detected.',
+    filterFields[1] && kpiFields[0]
+      ? `Middle/right: secondary breakdown by ${filterFields[1].label}, kept separate from the primary ranking to avoid mixing questions.`
+      : 'Secondary breakdown omitted unless a second useful category exists.',
+    'Bottom: detail table and data model view for exact records, QA, and high-cardinality fields.',
+  ];
 
   return {
     domain: inferDomain(fields.map((field) => field.name), fileName),
@@ -317,6 +472,9 @@ function createAnalystBrief({
     ].filter((value): value is string => Boolean(value)),
     warnings,
     anomalies: detectAnalystAnomalies(processedRows, kpiFields, mappedColumns),
+    keyInsights: narrative.insights,
+    dashboardPlan,
+    caveats: narrative.caveats.length ? narrative.caveats : ['No major caveats detected from the available schema, but calculated rates still depend on source grain.'],
     layout: [
       'Header: source, row count, detected grain, time range and global filters.',
       'Row 1: 3-5 KPI cards using only valid measure fields.',

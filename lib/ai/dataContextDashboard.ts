@@ -362,6 +362,7 @@ function componentIds(components: DashboardComponentConfig[]) {
 }
 
 function dashboardDescription(prompt: string, dataContext: DashboardDataContext) {
+  const brief = dataContext.analystBrief;
   const metrics = availableMetrics(dataContext).map((metric) => metricLabel(dataContext, metric)).slice(0, 4);
   const filters = [
     dataContext.dimensionSlots.primary ? dimensionLabel(dataContext, 'brand') : null,
@@ -370,12 +371,15 @@ function dashboardDescription(prompt: string, dataContext: DashboardDataContext)
   ].filter(Boolean);
 
   return [
-    `${inferDomain(dataContext)} from ${dataContext.sourceName}.`,
+    `${brief?.domain || inferDomain(dataContext)} from ${dataContext.sourceName}.`,
     `Objective: ${prompt.trim() || 'monitor performance and identify drivers'}.`,
-    `Grain: ${dataContext.grain || 'one source row or event record'}.`,
+    `Key insights: ${brief?.keyInsights.length ? brief.keyInsights.slice(0, 3).join(' ') : 'insights will be generated from detected measures and dimensions.'}`,
+    `Dashboard plan: ${brief?.dashboardPlan.length ? brief.dashboardPlan.slice(0, 3).join(' ') : 'KPI row, driver visuals, then detail table.'}`,
+    `Caveats: ${brief?.caveats.length ? brief.caveats.slice(0, 2).join(' ') : 'No major caveats detected.'}`,
+    `Grain: ${brief?.grain || dataContext.grain || 'one source row or event record'}.`,
     `KPIs: ${metrics.length ? metrics.join(', ') : 'no reliable numeric KPI detected'}.`,
     `Slicers: ${filters.length ? filters.join(', ') : 'none detected'}.`,
-    'Layout follows: header filters, executive KPI row, trend/driver visuals, then deep-dive table. Non-additive metrics are recalculated after filters.',
+    'Layout follows the inverted pyramid: executive summary first, explanatory trends/drivers next, diagnostic detail last.',
   ].join(' ');
 }
 

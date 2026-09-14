@@ -8,6 +8,7 @@ import { DataInsights } from '@/components/dashboard/DataInsights';
 import { DataModelView } from '@/components/dashboard/DataModelView';
 import { DashboardRenderer } from '@/components/dashboard/DashboardRenderer';
 import { Filters } from '@/components/dashboard/Filters';
+import { InsightArchitectPanel } from '@/components/dashboard/InsightArchitectPanel';
 import type { MarketingRow } from '@/lib/data/mockData';
 import type { DashboardDataContext } from '@/lib/data/importData';
 import {
@@ -119,6 +120,7 @@ export function DashboardCanvas({
                 summary={summary}
               />
             )}
+            {hasConnectedData && <InsightArchitectPanel dataContext={dataContext} />}
             {hasConnectedData && dashboardConfig.components.length ? (
               <DashboardRenderer
                 config={dashboardConfig}
