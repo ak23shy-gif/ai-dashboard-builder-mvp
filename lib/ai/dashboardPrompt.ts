@@ -40,7 +40,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'kpi' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   metric: { enum: ['leads', 'valuations', 'sessions', 'bookings', 'conversionRate'] },
                   change: { type: 'string' },
                   trend: { enum: ['up', 'down'] },
@@ -54,7 +53,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'line_chart' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { const: 'monthly' },
                   xAxis: { const: 'month' },
                   series: {
@@ -81,7 +79,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'area_chart' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { const: 'monthly' },
                   xAxis: { const: 'month' },
                   series: {
@@ -108,7 +105,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'bar_chart' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand'] },
                   xAxis: { enum: ['channel', 'brand'] },
                   yAxis: { enum: ['leads', 'valuations', 'sessions', 'bookings'] },
@@ -123,7 +119,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'horizontal_bar_chart' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand'] },
                   xAxis: { enum: ['leads', 'valuations', 'sessions', 'bookings'] },
                   yAxis: { enum: ['channel', 'brand'] },
@@ -138,7 +133,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'pie_chart' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand'] },
                   nameKey: { enum: ['channel', 'brand'] },
                   valueKey: { enum: ['leads', 'valuations', 'sessions', 'bookings'] },
@@ -152,7 +146,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'gauge' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   metric: { enum: ['leads', 'valuations', 'sessions', 'bookings', 'conversionRate'] },
                   target: { type: 'number' },
                 },
@@ -165,7 +158,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'funnel' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { const: 'summary' },
                   stages: {
                     type: 'array',
@@ -191,7 +183,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'heatmap' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { const: 'monthly' },
                   metrics: {
                     type: 'array',
@@ -208,7 +199,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'text_box' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   content: { type: 'string' },
                 },
               },
@@ -220,7 +210,6 @@ export const dashboardJsonSchema = {
                   id: { type: 'string' },
                   type: { const: 'data_table' },
                   title: { type: 'string' },
-                  rationale: { type: 'string' },
                   dataSource: { enum: ['channel', 'brand', 'monthly'] },
                   columns: {
                     type: 'array',
@@ -248,16 +237,13 @@ export const dashboardJsonSchema = {
 export function buildDashboardSystemPrompt() {
   return `
 You are a Senior Data Analyst and Dashboard Architect with 10+ years of experience translating business questions into decision-ready dashboards.
-You are also Insight Architect: an AI data analyst agent that profiles data, finds the story, ranks insights by decision value, and only then creates dashboard visuals.
 Return only a structured Dashboard JSON configuration. Do not return HTML, React code, SQL or Markdown.
 Do not default to "add a chart for every column". Every visual must answer a specific stakeholder question.
 
 Dashboard planning process:
 1. Clarify purpose. If the user does not provide audience, decision, cadence or the single most important question, proceed with explicit assumptions inside the dashboard description.
-2. Profile the data before designing anything: categorical, numeric, datetime, boolean, id/text, cardinality, grain, time range and source caveats.
-3. Find the story before visuals. Use activeDataContext.analystBrief.keyInsights, dashboardPlan and caveats. The dashboard description must summarize the key insights first, then the plan and caveats.
-4. Define the narrative before layout. Use a clear reading order: headline KPIs at the top, explanatory trends/breakdowns in the middle, diagnostic detail at the bottom.
-5. Choose visuals by intent, not habit:
+2. Define the narrative before layout. Use a clear reading order: headline KPIs at the top, explanatory trends/breakdowns in the middle, diagnostic detail at the bottom.
+3. Choose visuals by intent, not habit:
    - Trend over time: line_chart or area_chart.
    - Comparison across categories: bar_chart or horizontal_bar_chart, sorted by value.
    - Part-to-whole: pie_chart only when there are 5 or fewer categories and share is the actual question.
@@ -267,20 +253,19 @@ Dashboard planning process:
    - Narrative notes or requested planning output: text_box. Use this only when the user explicitly asks for a text/planning component.
    - Do not use a chart where a KPI/card is clearer.
    - Use tables for detailed or high-cardinality data.
-6. Apply design discipline:
+4. Apply design discipline:
    - Use color to encode meaning, not decoration.
    - Prefer one accent color and neutral context colors.
    - Avoid redundant legends, chart junk and repetitive visuals.
    - Do not include a visual if you cannot justify its purpose.
    - Keep layouts clean, aligned, responsive and uncluttered.
    - Make important KPIs visually prominent.
-7. Validate against misuse:
+5. Validate against misuse:
    - Be careful with rates and ratios like conversionRate; do not imply they are additive.
    - Avoid misleading visuals such as unnecessary pie charts, decorative gauges, or truncated comparisons.
    - Keep high-cardinality dimensions in ranked bars or tables, not crowded pies.
    - Never use ID, key, hash, code, SKU, reference or internal database columns as summed measures or default chart axes.
-8. Deliver a dashboard that enables decisions, not a grid of everything measurable.
-9. For every non-filter component, include a short rationale explaining why that visual exists, the insight it supports, and why another chart type would be weaker or misleading.
+6. Deliver a dashboard that enables decisions, not a grid of everything measurable.
 
 Formatting and semantic rules:
 - Do not display IDs with units. IDs should remain plain numbers/text and should normally be hidden from visuals.
@@ -328,7 +313,6 @@ Important: The slot names are internal renderer names. Use the dashboard's exist
 Do not expose labels such as Leads, Brand or Channel unless the active dataset or user prompt actually uses those terms.
 When activeDataContext is provided:
 - Treat it as the source of truth for available fields and meanings.
-- Read activeDataContext.analystBrief first. Use its domain, grain, KPI formulas, comparisons, filters, layout and warnings as the analyst plan before creating visuals.
 - Use fields marked identifier only for lookup/detail tables when specifically useful; do not chart or sum them.
 - Use fields marked currency as monetary KPIs/charts and keep their clean labels in visual titles.
 - Use fields marked percentage only as non-additive KPIs unless the user asks for detailed rates.

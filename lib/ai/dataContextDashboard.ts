@@ -20,14 +20,6 @@ function cleanLabel(value: string | undefined, fallback: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function compactSourceName(dataContext: DashboardDataContext) {
-  if (/^https?:\/\//i.test(dataContext.sourceName)) {
-    return dataContext.sourceType === 'api' ? 'Connected API Data' : 'Connected Data';
-  }
-
-  return dataContext.sourceName.replace(/\.[^.]+$/, '');
-}
-
 function normalise(value: string | undefined) {
   return String(value || '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -51,12 +43,7 @@ function dimensionLabel(dataContext: DashboardDataContext, dimension: 'brand' | 
 }
 
 function availableMetrics(dataContext: DashboardDataContext) {
-  const briefMetrics = dataContext.analystBrief?.kpis
-    .map((kpi) => metricSlots.find((metric) => dataContext.metricSlots[metric] === kpi.sourceColumn))
-    .filter((metric): metric is AdditiveMetric => Boolean(metric));
-  const fallbackMetrics = metricSlots.filter((metric) => Boolean(dataContext.metricSlots[metric]));
-
-  return Array.from(new Set([...(briefMetrics || []), ...fallbackMetrics]));
+  return metricSlots.filter((metric) => Boolean(dataContext.metricSlots[metric]));
 }
 
 function hasDimension(dataContext: DashboardDataContext, dimension: 'brand' | 'channel') {
@@ -229,37 +216,36 @@ function layoutPlan(dataContext: DashboardDataContext) {
 }
 
 function textBox(dataContext: DashboardDataContext, prompt: string): TextBoxComponentConfig {
-  const brief = dataContext.analystBrief;
   const businessQuestion =
-    prompt.trim() || brief?.businessQuestion || 'Assumption: identify what is performing best or worst, what changed over time, and which category needs action.';
-  const audience = brief?.audience || 'Assumption: business users and analysts who need a quick read plus enough detail to investigate.';
+    prompt.trim() || 'Assumption: identify what is performing best or worst, what changed over time, and which category needs action.';
+  const audience = 'Assumption: business users and analysts who need a quick read plus enough detail to investigate.';
 
   return {
-    id: 'analyst_plan',
+    id: 'insights_overview',
     type: 'text_box',
-    title: 'Analyst Plan',
+    title: 'Dashboard Architecture Plan',
     content: [
       'Phase 1: Business Objective & KPIs',
       `Objective: ${businessQuestion}`,
-      `Domain/source: ${brief?.domain || inferDomain(dataContext)} from ${dataContext.sourceName} (${dataContext.sourceType.toUpperCase()}).`,
+      `Domain/source: ${inferDomain(dataContext)} from ${dataContext.sourceName} (${dataContext.sourceType.toUpperCase()}).`,
       `Audience: ${audience}`,
-      `Top-line KPI cards:\n${brief?.kpis.length ? brief.kpis.map((kpi) => `- ${kpi.label} = ${kpi.formula}; ${kpi.reason}`).join('\n') : kpiDefinitions(dataContext)}`,
+      `Top-line KPI cards:\n${kpiDefinitions(dataContext)}`,
       '',
       'Phase 2: Data Model & Metric Logic',
       `Data dictionary & scoping:\n${fieldList(dataContext)}`,
-      `Grain: ${brief?.grain || dataContext.grain || 'one source row or event record'}.`,
+      `Grain: ${dataContext.grain || 'one source row or event record'}.`,
       `Time range & frequency: ${dataContext.timeRange?.label || 'not detected'}; ${dataContext.timeRange?.frequency || 'not detected'}.`,
-      `Filter controls:\n${brief?.filters.length ? brief.filters.map((filter) => `- ${filter}`).join('\n') : filterPlan(dataContext)}`,
+      `Filter controls:\n${filterPlan(dataContext)}`,
       '',
       'Phase 3: Visual Hierarchy & Page Layout',
-      brief?.layout.length ? brief.layout.map((item, index) => `${index + 1}. ${item}`).join('\n') : layoutPlan(dataContext),
+      layoutPlan(dataContext),
       '',
       'Phase 4: Automated Analytical Insights',
-      `Dynamic comparisons:\n${brief?.comparisons.length ? brief.comparisons.map((item) => `- ${item}`).join('\n') : comparisonPlan(dataContext)}`,
+      `Dynamic comparisons:\n${comparisonPlan(dataContext)}`,
       `Anomaly logic: ${outlierPlan(dataContext)}`,
       '',
       'Phase 5: Visual QA & Misuse Prevention',
-      `${visualRationale(dataContext)}\n${brief?.warnings.length ? `\nWarnings:\n${brief.warnings.map((warning) => `- ${warning}`).join('\n')}` : ''}`,
+      visualRationale(dataContext),
     ].join('\n'),
     layout: { className: 'xl:col-span-2' },
   };
@@ -267,10 +253,10 @@ function textBox(dataContext: DashboardDataContext, prompt: string): TextBoxComp
 
 function titleForPrompt(prompt: string, dataContext: DashboardDataContext) {
   const promptText = normalise(prompt);
-  const sourceBase = compactSourceName(dataContext);
+  const sourceBase = dataContext.sourceName.replace(/\.[^.]+$/, '');
 
-  if (promptText.includes('plan') || promptText.includes('architecture')) {
-    return `${cleanLabel(sourceBase, 'Dataset')} Analyst Plan`;
+  if (promptText.includes('insight')) {
+    return `${cleanLabel(sourceBase, 'Dataset')} Insights`;
   }
 
   if (/\b(exec|executive|overview|summary)\b/.test(promptText)) {
@@ -296,67 +282,6 @@ function wantsShare(prompt: string) {
   return /\b(share|composition|split|mix|percentage)\b/.test(normalise(prompt));
 }
 
-function bestMetricForPrompt(prompt: string, dataContext: DashboardDataContext, fallback?: AdditiveMetric) {
-  const text = normalise(prompt);
-  const matches = availableMetrics(dataContext).find((metric) => {
-    const sourceColumn = dataContext.metricSlots[metric];
-    const label = metricLabel(dataContext, metric);
-    return sourceColumn && (text.includes(normalise(sourceColumn)) || text.includes(normalise(label)));
-  });
-
-  return matches || fallback;
-}
-
-function bestDimensionForPrompt(prompt: string, dataContext: DashboardDataContext, fallback: 'brand' | 'channel') {
-  const text = normalise(prompt);
-  const dimensions: Array<'brand' | 'channel'> = ['brand', 'channel'];
-  return (
-    dimensions.find((dimension) => {
-      const sourceColumn = dimension === 'brand' ? dataContext.dimensionSlots.primary : dataContext.dimensionSlots.secondary;
-      const label = dimensionLabel(dataContext, dimension);
-      return sourceColumn && (text.includes(normalise(sourceColumn)) || text.includes(normalise(label)));
-    }) || fallback
-  );
-}
-
-function trendDirectionFromAnomalies(dataContext: DashboardDataContext) {
-  const text = dataContext.analystBrief?.anomalies[0]?.toLowerCase() || '';
-  return text.includes('below') ? 'down' : 'up';
-}
-
-function anomalyNote(dataContext: DashboardDataContext) {
-  const anomalies = dataContext.analystBrief?.anomalies || [];
-  return anomalies.length ? ` Notable anomaly: ${anomalies[0]}` : '';
-}
-
-function kpiRationale(dataContext: DashboardDataContext, metric: AdditiveMetric) {
-  const sourceColumn = dataContext.metricSlots[metric];
-  const briefKpi = dataContext.analystBrief?.kpis.find((kpi) => kpi.sourceColumn === sourceColumn);
-  return briefKpi
-    ? `${briefKpi.formula}. ${briefKpi.reason}`
-    : `Top-line KPI using ${metricLabel(dataContext, metric)} because it is a reliable numeric measure in the connected dataset.`;
-}
-
-function visualReason(type: string, metricLabelText: string, dimensionLabelText?: string) {
-  if (type === 'trend') {
-    return `Trend over time is shown as a line/area chart because period movement and changes are the question; a category chart would hide timing.`;
-  }
-
-  if (type === 'rank') {
-    return `${metricLabelText} by ${dimensionLabelText} is shown as a sorted bar ranking because it supports comparison; a pie chart would be harder to read for many categories.`;
-  }
-
-  if (type === 'share') {
-    return `${metricLabelText} share is shown only because composition was requested and the category count is controlled.`;
-  }
-
-  if (type === 'table') {
-    return `Table keeps detailed/high-cardinality records inspectable without forcing every field into a crowded visual.`;
-  }
-
-  return `Visual selected from the analyst brief to answer a distinct question without duplicating another chart.`;
-}
-
 function componentIds(components: DashboardComponentConfig[]) {
   const seen = new Set<string>();
 
@@ -370,18 +295,21 @@ function componentIds(components: DashboardComponentConfig[]) {
 }
 
 function dashboardDescription(prompt: string, dataContext: DashboardDataContext) {
-  const brief = dataContext.analystBrief;
   const metrics = availableMetrics(dataContext).map((metric) => metricLabel(dataContext, metric)).slice(0, 4);
-  const rowCount = dataContext.processedRowCount.toLocaleString('en-GB');
-  const period = dataContext.timeRange?.label;
-  const mainInsight = brief?.keyInsights[0];
+  const filters = [
+    dataContext.dimensionSlots.primary ? dimensionLabel(dataContext, 'brand') : null,
+    dataContext.dimensionSlots.secondary ? dimensionLabel(dataContext, 'channel') : null,
+    dataContext.dimensionSlots.date ? fieldLabel(dataContext, dataContext.dimensionSlots.date, 'Period') : null,
+  ].filter(Boolean);
 
   return [
-    `${brief?.domain || inferDomain(dataContext)} from ${compactSourceName(dataContext)}.`,
-    `${rowCount} rows analysed${period ? ` across ${period}` : ''}.`,
-    metrics.length ? `Primary measures: ${metrics.join(', ')}.` : 'No reliable numeric KPI detected.',
-    mainInsight ? `Main insight: ${mainInsight}` : '',
-  ].filter(Boolean).join(' ');
+    `${inferDomain(dataContext)} from ${dataContext.sourceName}.`,
+    `Objective: ${prompt.trim() || 'monitor performance and identify drivers'}.`,
+    `Grain: ${dataContext.grain || 'one source row or event record'}.`,
+    `KPIs: ${metrics.length ? metrics.join(', ') : 'no reliable numeric KPI detected'}.`,
+    `Slicers: ${filters.length ? filters.join(', ') : 'none detected'}.`,
+    'Layout follows: header filters, executive KPI row, trend/driver visuals, then deep-dive table. Non-additive metrics are recalculated after filters.',
+  ].join(' ');
 }
 
 export function createDashboardFromDataContext(
@@ -390,13 +318,12 @@ export function createDashboardFromDataContext(
   dataContext: DashboardDataContext,
 ) {
   const metrics = availableMetrics(dataContext);
-  const promptMetric = bestMetricForPrompt(prompt, dataContext, metrics[0]);
-  const primaryMetric = promptMetric || metrics[0];
+  const primaryMetric = metrics[0];
   const secondaryMetric = metrics[1];
+  const thirdMetric = metrics[2];
   const hasDate = Boolean(dataContext.dimensionSlots.date);
   const hasPrimaryDimension = hasDimension(dataContext, 'brand');
   const hasSecondaryDimension = hasDimension(dataContext, 'channel');
-  const preferredDimension = bestDimensionForPrompt(prompt, dataContext, hasSecondaryDimension ? 'channel' : 'brand');
   const components: DashboardComponentConfig[] = [];
 
   if (wantsOnlyText(prompt)) {
@@ -415,9 +342,8 @@ export function createDashboardFromDataContext(
       type: 'kpi',
       title: metricLabel(dataContext, metric),
       metric,
-      change: 'Filtered total',
-      trend: trendDirectionFromAnomalies(dataContext),
-      rationale: kpiRationale(dataContext, metric),
+      change: 'Dataset total',
+      trend: 'up',
     });
   });
 
@@ -429,7 +355,6 @@ export function createDashboardFromDataContext(
       metric: 'conversionRate',
       change: 'Calculated after filters',
       trend: 'up',
-      rationale: `Derived ratio KPI. It is shown as a card because rates are non-additive and should not be summed in category charts.`,
     });
   }
 
@@ -446,11 +371,10 @@ export function createDashboardFromDataContext(
         label: metricLabel(dataContext, metric),
         color: colours[index],
       })),
-      rationale: `${visualReason('trend', metricLabel(dataContext, primaryMetric))}${anomalyNote(dataContext)}`,
     });
   }
 
-  if (primaryMetric && hasSecondaryDimension && preferredDimension === 'channel') {
+  if (primaryMetric && hasSecondaryDimension) {
     components.push({
       id: `${primaryMetric}_by_secondary_dimension`,
       type: 'horizontal_bar_chart',
@@ -459,12 +383,11 @@ export function createDashboardFromDataContext(
       xAxis: primaryMetric,
       yAxis: 'channel',
       color: colours[1],
-      rationale: visualReason('rank', metricLabel(dataContext, primaryMetric), dimensionLabel(dataContext, 'channel')),
     });
   }
 
   if ((secondaryMetric || primaryMetric) && hasPrimaryDimension) {
-    const metric = preferredDimension === 'brand' ? primaryMetric : secondaryMetric || primaryMetric;
+    const metric = secondaryMetric || primaryMetric;
     components.push({
       id: `${metric}_by_primary_dimension`,
       type: 'bar_chart',
@@ -473,20 +396,6 @@ export function createDashboardFromDataContext(
       xAxis: 'brand',
       yAxis: metric,
       color: colours[0],
-      rationale: visualReason('rank', metricLabel(dataContext, metric), dimensionLabel(dataContext, 'brand')),
-    });
-  }
-
-  if (primaryMetric && hasSecondaryDimension && preferredDimension === 'brand') {
-    components.push({
-      id: `${primaryMetric}_by_secondary_dimension`,
-      type: 'horizontal_bar_chart',
-      title: `${metricLabel(dataContext, primaryMetric)} by ${dimensionLabel(dataContext, 'channel')}`,
-      dataSource: 'channel',
-      xAxis: primaryMetric,
-      yAxis: 'channel',
-      color: colours[1],
-      rationale: visualReason('rank', metricLabel(dataContext, primaryMetric), dimensionLabel(dataContext, 'channel')),
     });
   }
 
@@ -498,7 +407,6 @@ export function createDashboardFromDataContext(
       dataSource: 'channel',
       nameKey: 'channel',
       valueKey: primaryMetric,
-      rationale: visualReason('share', metricLabel(dataContext, primaryMetric), dimensionLabel(dataContext, 'channel')),
     });
   }
 
@@ -509,7 +417,6 @@ export function createDashboardFromDataContext(
       title: 'Measure Intensity by Period',
       dataSource: 'monthly',
       metrics: metrics.slice(0, 4),
-      rationale: `Heatmap is used as a compact diagnostic layer to compare multiple measures by period and spot unusual intensity.`,
     });
   }
 
@@ -525,7 +432,6 @@ export function createDashboardFromDataContext(
         { key: dimension, label: dimensionLabel(dataContext, dimension) },
         ...metrics.slice(0, 4).map((metric) => ({ key: metric, label: metricLabel(dataContext, metric) })),
       ],
-      rationale: visualReason('table', metricLabel(dataContext, primaryMetric || metrics[0] || 'leads'), dimensionLabel(dataContext, dimension)),
     });
   }
 

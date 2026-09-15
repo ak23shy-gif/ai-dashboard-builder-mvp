@@ -1,14 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Columns3, Database, Hash, Table2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Columns3, Database, Hash, MoveHorizontal, Rows3, Table2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDashboardValue } from '@/lib/data/dataProcessor';
 import type { DashboardDataContext } from '@/lib/data/importData';
 import type { MarketingRow } from '@/lib/data/mockData';
-
-type ModelRow = Record<string, unknown>;
 
 type DataModelViewProps = {
   rows: MarketingRow[];
@@ -16,7 +14,7 @@ type DataModelViewProps = {
   dataContext?: DashboardDataContext;
 };
 
-const fallbackModelColumns: Array<{ key: keyof MarketingRow; label: string }> = [
+const modelColumns: Array<{ key: keyof MarketingRow; label: string }> = [
   { key: 'date', label: 'Date' },
   { key: 'month', label: 'Month' },
   { key: 'year', label: 'Year' },
@@ -28,7 +26,7 @@ const fallbackModelColumns: Array<{ key: keyof MarketingRow; label: string }> = 
   { key: 'bookings', label: 'Completed outcomes' },
 ];
 
-function fallbackFieldType(key: keyof MarketingRow) {
+function fieldType(key: keyof MarketingRow) {
   if (key === 'date') {
     return 'date';
   }
@@ -40,36 +38,12 @@ function fallbackFieldType(key: keyof MarketingRow) {
   return 'number';
 }
 
-function missingCount(rows: ModelRow[], key: string) {
+function missingCount(rows: MarketingRow[], key: keyof MarketingRow) {
   return rows.filter((row) => row[key] === null || row[key] === undefined || row[key] === '').length;
 }
 
-function distinctCount(rows: ModelRow[], key: string) {
+function distinctCount(rows: MarketingRow[], key: keyof MarketingRow) {
   return new Set(rows.map((row) => String(row[key] ?? ''))).size;
-}
-
-function formatModelCell(value: unknown, context: string) {
-  if (value === null || value === undefined || value === '') {
-    return '';
-  }
-
-  if (typeof value === 'number' || typeof value === 'string') {
-    return String(formatDashboardValue(value, context));
-  }
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10);
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'True' : 'False';
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 function labelForSlot(dataContext: DashboardDataContext | undefined, slot: string, fallback: string) {
@@ -86,75 +60,35 @@ function labelForSlot(dataContext: DashboardDataContext | undefined, slot: strin
 }
 
 export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewProps) {
-  const previewCount = 700;
-  const [tableScrollWidth, setTableScrollWidth] = useState(0);
-  const tableViewportRef = useRef<HTMLDivElement>(null);
-  const bottomScrollbarRef = useRef<HTMLDivElement>(null);
+  const [previewCount, setPreviewCount] = useState(250);
   const displayColumns = useMemo(
-    () => {
-      if (dataContext?.fields.length) {
-        return dataContext.fields.map((field) => ({
-          key: field.name,
-          label: field.label,
-          role: field.role,
-        }));
-      }
-
-      return fallbackModelColumns.map((column) => ({
+    () =>
+      modelColumns.map((column) => ({
         ...column,
         label: labelForSlot(dataContext, column.key, column.label),
-        role: fallbackFieldType(column.key),
-      }));
-    },
+      })),
     [dataContext],
   );
-  const modelRows = useMemo<ModelRow[]>(
-    () => (dataContext?.rawRows?.length ? dataContext.rawRows : rows),
-    [dataContext?.rawRows, rows],
-  );
-  const previewRows = modelRows.slice(0, previewCount);
+  const previewRows = rows.slice(0, previewCount);
   const tableMinWidth = displayColumns.length * 165;
   const fieldProfiles = useMemo(() => {
     return displayColumns.reduce<Record<string, { distinct: number; missing: number }>>((profiles, column) => {
       profiles[column.key] = {
-        distinct: distinctCount(modelRows, column.key),
-        missing: missingCount(modelRows, column.key),
+        distinct: distinctCount(rows, column.key),
+        missing: missingCount(rows, column.key),
       };
       return profiles;
     }, {});
-  }, [displayColumns, modelRows]);
-
-  useEffect(() => {
-    function updateScrollWidth() {
-      setTableScrollWidth(tableViewportRef.current?.scrollWidth || tableMinWidth);
-    }
-
-    updateScrollWidth();
-    window.addEventListener('resize', updateScrollWidth);
-
-    return () => window.removeEventListener('resize', updateScrollWidth);
-  }, [displayColumns.length, previewRows.length, tableMinWidth]);
-
-  function syncTableFromBottomScrollbar() {
-    if (tableViewportRef.current && bottomScrollbarRef.current) {
-      tableViewportRef.current.scrollLeft = bottomScrollbarRef.current.scrollLeft;
-    }
-  }
-
-  function syncBottomScrollbarFromTable() {
-    if (tableViewportRef.current && bottomScrollbarRef.current) {
-      bottomScrollbarRef.current.scrollLeft = tableViewportRef.current.scrollLeft;
-    }
-  }
+  }, [displayColumns, rows]);
 
   return (
     <div className="grid gap-5">
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="border-slate-200/80 shadow-none">
           <CardContent className="flex items-center justify-between gap-3 p-5">
-            <div className="min-w-0">
+            <div>
               <p className="text-xs font-semibold uppercase text-slate-500">Source</p>
-              <p className="mt-1 truncate text-sm font-semibold text-slate-950" title={sourceLabel}>{sourceLabel}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">{sourceLabel}</p>
             </div>
             <Database className="h-5 w-5 text-primary" />
           </CardContent>
@@ -163,7 +97,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
           <CardContent className="flex items-center justify-between gap-3 p-5">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-500">Rows</p>
-              <p className="mt-1 text-sm font-semibold text-slate-950">{modelRows.length.toLocaleString('en-GB')}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">{rows.length.toLocaleString('en-GB')}</p>
             </div>
             <Table2 className="h-5 w-5 text-primary" />
           </CardContent>
@@ -193,7 +127,7 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3" key={column.key}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-semibold text-slate-900">{column.label}</p>
-                  <Badge>{column.role || 'field'}</Badge>
+                  <Badge>{fieldType(column.key)}</Badge>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                   <span>Distinct: {fieldProfiles[column.key]?.distinct ?? 0}</span>
@@ -213,60 +147,62 @@ export function DataModelView({ rows, sourceLabel, dataContext }: DataModelViewP
           </div>
           <Badge>{previewRows.length.toLocaleString('en-GB')} shown</Badge>
         </CardHeader>
-        <CardContent className="min-w-0">
-          {modelRows.length ? (
-            <div className="grid h-[min(560px,calc(100vh-260px))] min-h-[360px] w-full max-w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-md border border-slate-200">
-              <div
-                className="dashboard-scrollbar min-h-0 overflow-y-auto overflow-x-hidden"
-                onScroll={syncBottomScrollbarFromTable}
-                ref={tableViewportRef}
-              >
-                <table className="table-fixed text-sm" style={{ width: tableMinWidth }}>
-                  <colgroup>
+        <CardContent>
+          {rows.length ? (
+            <>
+              <div className="mb-4 grid gap-3 rounded-md border border-border bg-muted p-3">
+                <label className="grid gap-2 text-xs font-medium text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    <Rows3 className="h-4 w-4" />
+                    Rows shown: {previewCount.toLocaleString('en-GB')}
+                  </span>
+                  <input
+                    className="accent-primary"
+                    max={Math.min(rows.length, 1000)}
+                    min={50}
+                    onChange={(event) => setPreviewCount(Number(event.target.value))}
+                    step={50}
+                    type="range"
+                    value={Math.min(previewCount, Math.min(rows.length, 1000))}
+                  />
+                </label>
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <MoveHorizontal className="h-4 w-4" />
+                  Use the horizontal scrollbar at the bottom of the table to view hidden right-side columns.
+                </p>
+              </div>
+
+              <div className="max-h-[560px] overflow-auto rounded-md border border-slate-200">
+              <table className="w-full text-sm" style={{ minWidth: tableMinWidth }}>
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
                     {displayColumns.map((column) => (
-                      <col key={column.key} style={{ width: 165 }} />
+                      <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key}>
+                        {column.label}
+                      </th>
                     ))}
-                  </colgroup>
-                  <thead className="sticky top-0 bg-slate-50">
-                    <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map((row, index) => (
+                    <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={`${row.date}-${row.brand}-${row.channel}-${index}`}>
                       {displayColumns.map((column) => (
-                        <th className="whitespace-nowrap px-3 py-3 font-semibold" key={column.key} title={column.label}>
-                          <span className="block truncate">{column.label}</span>
-                        </th>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key}>
+                          {formatDashboardValue(row[column.key], `${column.key} ${column.label}`)}
+                        </td>
                       ))}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map((row, index) => (
-                      <tr className="border-b border-slate-100 transition hover:bg-slate-50 last:border-0" key={index}>
-                        {displayColumns.map((column) => {
-                          const displayValue = formatModelCell(row[column.key], `${column.key} ${column.label}`);
-
-                          return (
-                            <td className="whitespace-nowrap px-3 py-3 text-slate-700" key={column.key} title={String(displayValue)}>
-                              <span className="block truncate">{displayValue}</span>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  ))}
+                </tbody>
+              </table>
               </div>
-              <div
-                className="dashboard-scrollbar h-5 overflow-x-scroll overflow-y-hidden border-t border-slate-200 bg-slate-50"
-                onScroll={syncTableFromBottomScrollbar}
-                ref={bottomScrollbarRef}
-              >
-                <div className="h-1" style={{ width: tableScrollWidth || tableMinWidth }} />
-              </div>
-            </div>
+            </>
           ) : (
             <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
               Upload a CSV or Excel file to inspect the model table.
             </div>
           )}
-          {modelRows.length > previewRows.length && (
+          {rows.length > previewRows.length && (
             <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
               <Hash className="h-4 w-4" />
               Showing first {previewRows.length.toLocaleString('en-GB')} rows for browser performance.

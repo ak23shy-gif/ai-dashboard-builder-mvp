@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CornerDownLeft,
   Loader2,
+  MessageSquareText,
   RotateCcw,
   ShieldCheck,
   Wand2,
@@ -42,17 +43,9 @@ type DashboardApiResult = {
   dashboard?: DashboardConfig;
   error?: string;
   setup?: string;
-  source?: 'openai' | 'gemini' | 'deepseek' | 'local';
+  source?: 'openai' | 'gemini' | 'local';
   warning?: string;
 };
-
-function compactWarning(warning: string | undefined) {
-  if (!warning) {
-    return '';
-  }
-
-  return warning.length > 150 ? `${warning.slice(0, 147).trim()}...` : warning;
-}
 
 async function readDashboardApiResult(response: Response): Promise<DashboardApiResult> {
   const contentType = response.headers.get('content-type') || '';
@@ -91,7 +84,6 @@ export function AIAssistant({
   onResetDashboard,
 }: AIAssistantProps) {
   const [prompt, setPrompt] = useState('');
-  const [selectedExample, setSelectedExample] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('AI generation is ready. Upload data or describe the dashboard you want.');
 
@@ -131,20 +123,13 @@ export function AIAssistant({
       }
 
       const sourceLabel =
-        result.source === 'local'
-          ? 'Local planner'
-          : result.source === 'gemini'
-            ? 'Gemini'
-            : result.source === 'deepseek'
-              ? 'DeepSeek'
-              : 'OpenAI';
+        result.source === 'local' ? 'Local planner' : result.source === 'gemini' ? 'Gemini' : 'OpenAI';
 
       setStatus('success');
-      const warning = compactWarning(result.warning);
       setMessage(
         `${sourceLabel} generated and rendered: ${result.dashboard?.title || 'Untitled dashboard'} with ${
           result.dashboard?.components?.length || 0
-        } components.${warning ? ` ${warning}` : ''}`,
+        } components.${result.warning ? ` ${result.warning}` : ''}`,
       );
     } catch (error) {
       setStatus('error');
@@ -158,21 +143,14 @@ export function AIAssistant({
     setMessage('Dashboard reset to the default JSON configuration.');
   }
 
-  function handleExampleSelect(value: string) {
-    setSelectedExample(value);
-    if (value) {
-      setPrompt(value);
-    }
-  }
-
   return (
-    <aside className="flex h-screen min-w-0 max-w-full flex-col overflow-y-auto overflow-x-hidden border-l border-slate-200 bg-white px-4 py-4">
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+    <aside className="flex min-h-screen w-full flex-col overflow-auto border-l border-slate-200 bg-white px-4 py-4 xl:w-[390px]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-950 text-white">
             <Bot className="h-4 w-4" />
           </div>
-          <div className="min-w-0">
+          <div>
             <h2 className="text-sm font-semibold">AI Copilot</h2>
             <p className="text-xs text-muted-foreground">Prompt to dashboard JSON</p>
           </div>
@@ -187,31 +165,16 @@ export function AIAssistant({
             <p className="mt-1 text-xs leading-5 text-muted-foreground">Generate or refine the current analysis surface.</p>
           </div>
         </CardHeader>
-        <CardContent className="min-w-0">
+        <CardContent>
           <Textarea
             aria-label="Dashboard prompt"
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="Create an operations dashboard showing volume, completion, exceptions and monthly trends..."
             value={prompt}
           />
-          <label className="mt-3 grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
-            Example prompts
-            <select
-              className="h-10 w-full min-w-0 max-w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none transition hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20"
-              onChange={(event) => handleExampleSelect(event.target.value)}
-              value={selectedExample}
-            >
-              <option value="">Choose a prompt example...</option>
-              {examples.map((example) => (
-                <option key={example} value={example}>
-                  {example}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <p className="min-w-0 text-xs leading-5 text-muted-foreground">Uses only connected dataset fields. No data means no generated assumptions.</p>
-            <Button className="w-full sm:w-auto" disabled={status === 'loading' || !hasConnectedData} onClick={handleGenerate}>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">Uses only connected dataset fields. No data means no generated assumptions.</p>
+            <Button disabled={status === 'loading' || !hasConnectedData} onClick={handleGenerate}>
               {status === 'loading' ? 'Sending' : 'Generate'}
               {status === 'loading' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -220,7 +183,7 @@ export function AIAssistant({
               )}
             </Button>
           </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <Button disabled={status === 'loading' || !prompt.trim() || !hasConnectedData} onClick={handleGenerate} variant="outline">
               <Wand2 className="h-4 w-4" />
               Regenerate
@@ -246,12 +209,28 @@ export function AIAssistant({
             ) : (
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
             )}
-            <span className="min-w-0 break-words">{message}</span>
+            <span>{message}</span>
           </div>
         </CardContent>
       </Card>
 
       <DataSourcePanel onDataImported={onDataImported} />
+
+      <div className="mt-5 grid gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+          <MessageSquareText className="h-4 w-4" />
+          Example instructions
+        </div>
+        {examples.map((example) => (
+          <button
+            className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-sm leading-6 text-slate-700 transition hover:border-primary/40 hover:bg-white hover:shadow-sm"
+            key={example}
+            onClick={() => setPrompt(example)}
+          >
+            {example}
+          </button>
+        ))}
+      </div>
 
       <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="flex items-center gap-2">

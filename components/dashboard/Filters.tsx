@@ -1,6 +1,5 @@
 'use client';
 
-import { Filter } from 'lucide-react';
 import type { DashboardFilters } from '@/lib/data/dataProcessor';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,17 +17,12 @@ export function Filters({ brands, channels, filters, onChange }: FiltersProps) {
   }
 
   return (
-    <Card className="border-slate-200/80 bg-card shadow-none">
-      <CardContent className="flex flex-wrap items-end gap-2 p-3">
-        <div className="flex h-10 items-center gap-2 rounded-full border border-border bg-muted px-3 text-xs font-semibold text-muted-foreground">
-          <Filter className="h-4 w-4 text-primary" />
-          Slicers
-        </div>
-
-        <label className="grid min-w-[170px] gap-1 text-xs font-medium text-muted-foreground">
-          <span className="px-2">Brand</span>
+    <Card className="border-slate-200/80 bg-white shadow-none">
+      <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end">
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          Brand
           <select
-            className="h-10 rounded-full border border-slate-200 bg-card px-4 text-sm font-medium text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={filters.brand}
             onChange={(event) => updateFilter('brand', event.target.value)}
           >
@@ -37,10 +31,10 @@ export function Filters({ brands, channels, filters, onChange }: FiltersProps) {
           </select>
         </label>
 
-        <label className="grid min-w-[170px] gap-1 text-xs font-medium text-muted-foreground">
-          <span className="px-2">Channel</span>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          Channel
           <select
-            className="h-10 rounded-full border border-slate-200 bg-card px-4 text-sm font-medium text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={filters.channel}
             onChange={(event) => updateFilter('channel', event.target.value)}
           >
@@ -49,10 +43,10 @@ export function Filters({ brands, channels, filters, onChange }: FiltersProps) {
           </select>
         </label>
 
-        <label className="grid min-w-[140px] gap-1 text-xs font-medium text-muted-foreground">
-          <span className="px-2">Start Month</span>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          Start Month
           <select
-            className="h-10 rounded-full border border-slate-200 bg-card px-4 text-sm font-medium text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={filters.startMonth}
             onChange={(event) => updateFilter('startMonth', Number(event.target.value))}
           >
@@ -60,10 +54,10 @@ export function Filters({ brands, channels, filters, onChange }: FiltersProps) {
           </select>
         </label>
 
-        <label className="grid min-w-[140px] gap-1 text-xs font-medium text-muted-foreground">
-          <span className="px-2">End Month</span>
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          End Month
           <select
-            className="h-10 rounded-full border border-slate-200 bg-card px-4 text-sm font-medium text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={filters.endMonth}
             onChange={(event) => updateFilter('endMonth', Number(event.target.value))}
           >
@@ -72,7 +66,6 @@ export function Filters({ brands, channels, filters, onChange }: FiltersProps) {
         </label>
 
         <Button
-          className="h-10 rounded-full"
           variant="outline"
           onClick={() => onChange({ brand: 'All', channel: 'All', startMonth: 1, endMonth: 12 })}
         >

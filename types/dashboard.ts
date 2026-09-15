@@ -44,7 +44,6 @@ export interface BaseDashboardComponentConfig {
   id: string;
   type: DashboardComponentType;
   title: string;
-  rationale?: string;
   dataSource?: DashboardDataSource;
   layout?: {
     className?: string;

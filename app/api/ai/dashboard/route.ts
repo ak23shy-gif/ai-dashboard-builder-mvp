@@ -47,16 +47,9 @@ type GeminiResponse = {
   };
 };
 
-type DeepSeekResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  error?: {
-    message?: string;
-  };
-};
+function uniqueValues<T>(values: T[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
 
 function timeoutSignal() {
   const controller = new AbortController();
@@ -75,32 +68,6 @@ function geminiThinkingConfig(model: string) {
   }
 
   return undefined;
-}
-
-function providerIssue(provider: string, status: number, message: string | undefined) {
-  const detail = message ? ` ${message.slice(0, 180)}` : '';
-
-  if (status === 400) {
-    return `${provider} rejected the request format.${detail}`;
-  }
-
-  if (status === 401 || status === 403) {
-    return `${provider} rejected the API key or project access.${detail}`;
-  }
-
-  if (status === 404) {
-    return `${provider} could not find the configured model.${detail}`;
-  }
-
-  if (status === 429) {
-    return `${provider} quota or rate limit was reached.${detail}`;
-  }
-
-  if (status >= 500) {
-    return `${provider} service returned ${status}.${detail}`;
-  }
-
-  return `${provider} returned ${status}.${detail}`;
 }
 
 async function readProviderJson<T>(response: Response): Promise<T> {
@@ -266,80 +233,77 @@ async function generateWithOpenAI(prompt: string, currentDashboard?: DashboardCo
 }
 
 async function generateWithGemini(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
-  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-  const { signal, timeout } = timeoutSignal();
-  const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: 'POST',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': String(process.env.GEMINI_API_KEY),
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [
+  const models = uniqueValues([
+    'gemini-3.5-flash-lite',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    'gemini-3.8-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-2.5-flash',
+  ]);
+  const failures: string[] = [];
+
+  for (const model of models) {
+    const { signal, timeout } = timeoutSignal();
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
             {
-              text: buildDashboardSystemPrompt(),
+              role: 'user',
+              parts: [
+                {
+                  text: `${buildDashboardSystemPrompt()}\n\nReturn a single JSON object with this shape: {"dashboard": {...}}.\n\n${buildDashboardUserPrompt(
+                    prompt,
+                    currentDashboard,
+                    dataContext,
+                  )}`,
+                },
+              ],
             },
           ],
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `Return only valid JSON with this exact outer shape: {"dashboard": {...}}. Do not use markdown fences or explanatory text.\n\n${buildDashboardUserPrompt(
-                  prompt,
-                  currentDashboard,
-                  dataContext,
-                )}`,
-              },
-            ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+            maxOutputTokens: 4096,
+            thinkingConfig: geminiThinkingConfig(model),
           },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 4096,
-          thinkingConfig: geminiThinkingConfig(model),
-        },
-      }),
-    },
-  ).finally(() => clearTimeout(timeout));
+        }),
+      },
+    ).finally(() => clearTimeout(timeout));
 
-  const result = await readProviderJson<GeminiResponse>(geminiResponse);
+    const result = await readProviderJson<GeminiResponse>(geminiResponse);
 
-  if (!geminiResponse.ok) {
-    return localPlannerResponse(
-      prompt,
-      currentDashboard,
-      `${providerIssue('Gemini', geminiResponse.status, result.error?.message)} DashForge used the local analyst planner.`,
-      dataContext,
-    );
-  }
+    if (!geminiResponse.ok) {
+      failures.push(`${model}: ${result.error?.message || 'request failed'}`);
+      continue;
+    }
 
-  const outputText = extractGeminiOutputText(result);
+    const outputText = extractGeminiOutputText(result);
 
-  if (!outputText) {
-    return localPlannerResponse(
-      prompt,
-      currentDashboard,
-      `Gemini returned an empty response for ${model}, so DashForge used the local analyst planner.`,
-      dataContext,
-    );
-  }
+    if (!outputText) {
+      failures.push(`${model}: empty response`);
+      continue;
+    }
 
-  try {
-    const parsed = parseDashboardPayload(outputText);
+    let parsed: { dashboard?: DashboardConfig };
+
+    try {
+      parsed = parseDashboardPayload(outputText);
+    } catch (error) {
+      failures.push(`${model}: invalid JSON (${error instanceof Error ? error.message : 'parse failed'})`);
+      continue;
+    }
 
     if (!parsed.dashboard) {
-      return localPlannerResponse(
-        prompt,
-        currentDashboard,
-        `Gemini responded without dashboard JSON for ${model}, so DashForge used the local analyst planner.`,
-        dataContext,
-      );
+      failures.push(`${model}: response did not include a dashboard`);
+      continue;
     }
 
     return NextResponse.json({
@@ -347,118 +311,33 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
       source: 'gemini',
       model,
     });
-  } catch {
-    return localPlannerResponse(
-      prompt,
-      currentDashboard,
-      `Gemini returned JSON that did not match the dashboard schema for ${model}, so DashForge used the local analyst planner.`,
-      dataContext,
-    );
-  }
-}
-
-async function generateWithDeepSeek(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-  const { signal, timeout } = timeoutSignal();
-  const deepseekResponse = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    signal,
-    headers: {
-      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: `${buildDashboardSystemPrompt()}\n\nReturn only valid JSON with this exact outer shape: {"dashboard": {...}}. Do not use markdown fences or explanatory text.`,
-        },
-        {
-          role: 'user',
-          content: buildDashboardUserPrompt(prompt, currentDashboard, dataContext),
-        },
-      ],
-      response_format: { type: 'json_object' },
-      max_tokens: 3000,
-      temperature: 0.1,
-    }),
-  }).finally(() => clearTimeout(timeout));
-
-  const result = await readProviderJson<DeepSeekResponse>(deepseekResponse);
-
-  if (!deepseekResponse.ok) {
-    return localPlannerResponse(
-      prompt,
-      currentDashboard,
-      `${providerIssue('DeepSeek', deepseekResponse.status, result.error?.message)} DashForge used the local analyst planner.`,
-      dataContext,
-    );
   }
 
-  const outputText = result.choices?.[0]?.message?.content;
-
-  if (!outputText) {
-    return localPlannerResponse(
-      prompt,
-      currentDashboard,
-      `DeepSeek returned an empty response for ${model}, so DashForge used the local analyst planner.`,
-      dataContext,
-    );
-  }
-
-  try {
-    const parsed = parseDashboardPayload(outputText);
-
-    if (!parsed.dashboard) {
-      return localPlannerResponse(
-        prompt,
-        currentDashboard,
-        `DeepSeek responded without dashboard JSON for ${model}, so DashForge used the local analyst planner.`,
-        dataContext,
-      );
-    }
-
-    return NextResponse.json({
-      dashboard: finalDashboard(parsed.dashboard, prompt, currentDashboard, dataContext),
-      source: 'deepseek',
-      model,
-    });
-  } catch {
-    return localPlannerResponse(
-      prompt,
-      currentDashboard,
-      `DeepSeek returned JSON that did not match the dashboard schema for ${model}, so DashForge used the local analyst planner.`,
-      dataContext,
-    );
-  }
+  return localPlannerResponse(
+    prompt,
+    currentDashboard,
+    `Local planner used because Gemini did not return a usable dashboard. Tried ${models.join(', ')}. Last issue: ${
+      failures.at(-1) || 'request failed'
+    }`,
+    dataContext,
+  );
 }
 
 function preferredProvider() {
-  const configuredProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
-
-  if (configuredProvider === 'deepseek') {
-    return 'deepseek';
+  if (process.env.AI_PROVIDER === 'gemini') {
+    return 'gemini';
   }
 
-  if (configuredProvider === 'openai') {
+  if (process.env.AI_PROVIDER === 'openai') {
     return 'openai';
   }
 
-  if (configuredProvider === 'gemini') {
+  if (process.env.GEMINI_API_KEY) {
     return 'gemini';
   }
 
   if (process.env.OPENAI_API_KEY) {
     return 'openai';
-  }
-
-  if (process.env.DEEPSEEK_API_KEY) {
-    return 'deepseek';
-  }
-
-  if (process.env.GEMINI_API_KEY) {
-    return 'gemini';
   }
 
   return 'local';
@@ -502,13 +381,6 @@ export async function POST(request: Request) {
         return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because OPENAI_API_KEY is missing.', body.dataContext);
       }
       return await generateWithOpenAI(prompt, body.currentDashboard, body.dataContext);
-    }
-
-    if (provider === 'deepseek') {
-      if (!process.env.DEEPSEEK_API_KEY) {
-        return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because DEEPSEEK_API_KEY is missing.', body.dataContext);
-      }
-      return await generateWithDeepSeek(prompt, body.currentDashboard, body.dataContext);
     }
 
     return localPlannerResponse(
