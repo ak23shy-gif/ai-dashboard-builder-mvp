@@ -42,7 +42,7 @@ type DashboardApiResult = {
   dashboard?: DashboardConfig;
   error?: string;
   setup?: string;
-  source?: 'openai' | 'gemini' | 'local';
+  source?: 'openai' | 'gemini' | 'deepseek' | 'local';
   warning?: string;
 };
 
@@ -131,7 +131,13 @@ export function AIAssistant({
       }
 
       const sourceLabel =
-        result.source === 'local' ? 'Local planner' : result.source === 'gemini' ? 'Gemini' : 'OpenAI';
+        result.source === 'local'
+          ? 'Local planner'
+          : result.source === 'gemini'
+            ? 'Gemini'
+            : result.source === 'deepseek'
+              ? 'DeepSeek'
+              : 'OpenAI';
 
       setStatus('success');
       const warning = compactWarning(result.warning);

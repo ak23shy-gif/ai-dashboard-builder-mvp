@@ -47,6 +47,17 @@ type GeminiResponse = {
   };
 };
 
+type DeepSeekResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
+};
+
 function timeoutSignal() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
@@ -346,8 +357,89 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
   }
 }
 
+async function generateWithDeepSeek(prompt: string, currentDashboard?: DashboardConfig, dataContext?: DashboardDataContext) {
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  const { signal, timeout } = timeoutSignal();
+  const deepseekResponse = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    signal,
+    headers: {
+      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: `${buildDashboardSystemPrompt()}\n\nReturn only valid JSON with this exact outer shape: {"dashboard": {...}}. Do not use markdown fences or explanatory text.`,
+        },
+        {
+          role: 'user',
+          content: buildDashboardUserPrompt(prompt, currentDashboard, dataContext),
+        },
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 3000,
+      temperature: 0.1,
+    }),
+  }).finally(() => clearTimeout(timeout));
+
+  const result = await readProviderJson<DeepSeekResponse>(deepseekResponse);
+
+  if (!deepseekResponse.ok) {
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      `${providerIssue('DeepSeek', deepseekResponse.status, result.error?.message)} DashForge used the local analyst planner.`,
+      dataContext,
+    );
+  }
+
+  const outputText = result.choices?.[0]?.message?.content;
+
+  if (!outputText) {
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      `DeepSeek returned an empty response for ${model}, so DashForge used the local analyst planner.`,
+      dataContext,
+    );
+  }
+
+  try {
+    const parsed = parseDashboardPayload(outputText);
+
+    if (!parsed.dashboard) {
+      return localPlannerResponse(
+        prompt,
+        currentDashboard,
+        `DeepSeek responded without dashboard JSON for ${model}, so DashForge used the local analyst planner.`,
+        dataContext,
+      );
+    }
+
+    return NextResponse.json({
+      dashboard: finalDashboard(parsed.dashboard, prompt, currentDashboard, dataContext),
+      source: 'deepseek',
+      model,
+    });
+  } catch {
+    return localPlannerResponse(
+      prompt,
+      currentDashboard,
+      `DeepSeek returned JSON that did not match the dashboard schema for ${model}, so DashForge used the local analyst planner.`,
+      dataContext,
+    );
+  }
+}
+
 function preferredProvider() {
   const configuredProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
+
+  if (configuredProvider === 'deepseek') {
+    return 'deepseek';
+  }
 
   if (configuredProvider === 'openai') {
     return 'openai';
@@ -359,6 +451,10 @@ function preferredProvider() {
 
   if (process.env.OPENAI_API_KEY) {
     return 'openai';
+  }
+
+  if (process.env.DEEPSEEK_API_KEY) {
+    return 'deepseek';
   }
 
   if (process.env.GEMINI_API_KEY) {
@@ -406,6 +502,13 @@ export async function POST(request: Request) {
         return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because OPENAI_API_KEY is missing.', body.dataContext);
       }
       return await generateWithOpenAI(prompt, body.currentDashboard, body.dataContext);
+    }
+
+    if (provider === 'deepseek') {
+      if (!process.env.DEEPSEEK_API_KEY) {
+        return localPlannerResponse(prompt, body.currentDashboard, 'Local planner used because DEEPSEEK_API_KEY is missing.', body.dataContext);
+      }
+      return await generateWithDeepSeek(prompt, body.currentDashboard, body.dataContext);
     }
 
     return localPlannerResponse(
