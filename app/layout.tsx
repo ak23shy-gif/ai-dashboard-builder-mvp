@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DashForge AI',
+  title: 'Google API Data Extractor',
   description: 'AI-powered dashboard builder for connected datasets.',
 };
 

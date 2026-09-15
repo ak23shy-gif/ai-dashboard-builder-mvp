@@ -1,5 +1,5 @@
-import { DashboardBuilderShell } from '@/components/layout/DashboardBuilderShell';
+import { ExtractionApp } from '@/components/extraction/ExtractionApp';
 
 export default function Home() {
-  return <DashboardBuilderShell />;
+  return <ExtractionApp />;
 }
