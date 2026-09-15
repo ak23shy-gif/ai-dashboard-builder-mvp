@@ -347,20 +347,22 @@ async function generateWithGemini(prompt: string, currentDashboard?: DashboardCo
 }
 
 function preferredProvider() {
-  if (process.env.AI_PROVIDER === 'gemini') {
-    return 'gemini';
-  }
+  const configuredProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
 
-  if (process.env.AI_PROVIDER === 'openai') {
+  if (configuredProvider === 'openai') {
     return 'openai';
   }
 
-  if (process.env.GEMINI_API_KEY) {
+  if (configuredProvider === 'gemini') {
     return 'gemini';
   }
 
   if (process.env.OPENAI_API_KEY) {
     return 'openai';
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    return 'gemini';
   }
 
   return 'local';
