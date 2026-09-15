@@ -29,6 +29,7 @@ from .accounts import cipher, save_token, read_token, list_accounts, remove_acco
 load_dotenv(Path(__file__).parent / ".env")
 ORIGIN = os.getenv("APP_ORIGIN", "http://127.0.0.1:3001").rstrip("/")
 CORS_ORIGINS = sorted({o.rstrip("/") for o in (os.getenv("CORS_ORIGINS", "") + "," + ORIGIN + ",http://127.0.0.1:3001,http://localhost:3001,https://google-api-data-extractor.vercel.app").split(",") if o.strip()})
+VERCEL_ORIGIN_REGEX = r"https://[a-z0-9-]+\.vercel\.app"
 BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
 REDIRECT = os.getenv("GOOGLE_REDIRECT_URI", "").rstrip("/")
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("BACKEND_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",") if h.strip()]
@@ -204,13 +205,25 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Google Extract", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=VERCEL_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+
+def trusted_origin(origin):
+    origin = (origin or "").rstrip("/")
+    return origin in CORS_ORIGINS or bool(re.fullmatch(VERCEL_ORIGIN_REGEX, origin))
 
 
 @app.middleware("http")
 async def local_security(request, call_next):
-    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("origin", "").rstrip("/") not in CORS_ORIGINS:
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not trusted_origin(request.headers.get("origin", "")):
         return JSONResponse({"detail": "Untrusted request origin."}, 403)
     try:
         response = await call_next(request)
