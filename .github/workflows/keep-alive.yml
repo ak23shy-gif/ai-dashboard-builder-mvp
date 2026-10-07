@@ -1,0 +1,19 @@
+name: Keep backend and Supabase active
+
+on:
+  schedule:
+    # Runs daily at 05:30 UTC / 11:00 IST to keep the free backend/database warm.
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping deployed backend
+        run: |
+          curl --fail --show-error --silent --max-time 60 \
+            "https://google-api-data-extractor-backend.onrender.com/status" \
+            > /tmp/extractor-status.json
+          test -s /tmp/extractor-status.json
+          echo "Backend keep-alive completed."
