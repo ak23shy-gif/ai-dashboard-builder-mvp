@@ -197,7 +197,11 @@ async def api(method, url, workspace=None, connection=None, **kwargs):
 
 @asynccontextmanager
 async def lifespan(app):
-    init()
+    try:
+        init()
+    except Exception:
+        print("Database initialization failed during startup; the app will keep running and retry from /status?check_db=true.", flush=True)
+        print(traceback.format_exc(), flush=True)
     yield
     for task in list(tasks):
         task.cancel()
@@ -242,13 +246,24 @@ async def bad_input(request, exc):
 
 
 @app.get("/status")
-async def status(request: Request):
+async def status(request: Request, check_db: bool = False):
     configured = all(os.getenv(k) for k in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY"))
+    database = {"checked": False}
+    if check_db:
+        database["checked"] = True
+        try:
+            init()
+            with db() as c:
+                c.execute("SELECT 1")
+            database["connected"] = True
+        except Exception as exc:
+            database["connected"] = False
+            database["error"] = f"{exc.__class__.__name__}: {exc}"
     session = read_session(request.cookies.get("extract_session")) or {}
     connected = bool(session.get("expires", 0) > time.time())
     accounts = list_accounts(session["owner"]) if connected else []
     public_accounts = [{"id": a["id"], "email": a["email"], "products": [pid for pid, meta in CATALOG.items() if meta["scopes"] and set(meta["scopes"]).issubset(a["scopes"])]} for a in accounts]
-    return {"configured": configured, "connected": connected and bool(accounts), "email": accounts[0]["email"] if accounts else None, "workspace_owner": session.get("owner") if connected else None, "accounts": public_accounts, "products": [{"id": k, **{a: b for a, b in v.items() if a != "scopes"}} for k, v in CATALOG.items()]}
+    return {"configured": configured, "connected": connected and bool(accounts), "email": accounts[0]["email"] if accounts else None, "workspace_owner": session.get("owner") if connected else None, "accounts": public_accounts, "database": database, "products": [{"id": k, **{a: b for a, b in v.items() if a != "scopes"}} for k, v in CATALOG.items()]}
 
 
 @app.get("/auth/connect")

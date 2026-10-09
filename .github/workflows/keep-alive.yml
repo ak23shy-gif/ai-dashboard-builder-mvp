@@ -13,7 +13,7 @@ jobs:
       - name: Ping deployed backend
         run: |
           curl --fail --show-error --silent --max-time 60 \
-            "https://google-api-data-extractor-backend.onrender.com/status" \
+            "https://google-api-data-extractor-backend.onrender.com/status?check_db=true" \
             > /tmp/extractor-status.json
           test -s /tmp/extractor-status.json
           echo "Backend keep-alive completed."
