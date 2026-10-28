@@ -1,6 +1,9 @@
 .gx-brand { gap: 0; }
 .gx-brand-pound { color: var(--purple); font-size: 29px; }
 .gx-theme-toggle { margin-left: auto; }
+.gx-connector-inactive { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 10px; color: #a83c3c; }
+.gx-connector-inactive > span { width: 6px; height: 6px; border-radius: 50%; background: #dc4545; }
+.gx-app[data-theme='dark'] .gx-connector-inactive { color: #ffaaaa; }
 .gx-app[data-theme='dark'] {
   --purple: #b79aff;
   --ink: #efedf6;
