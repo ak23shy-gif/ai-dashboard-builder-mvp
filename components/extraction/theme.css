@@ -1,0 +1,40 @@
+.gx-brand { gap: 0; }
+.gx-brand-pound { color: var(--purple); font-size: 29px; }
+.gx-theme-toggle { margin-left: auto; }
+.gx-app[data-theme='dark'] {
+  --purple: #b79aff;
+  --ink: #efedf6;
+  --muted: #b6afc5;
+  --border: #393344;
+  background: #131119;
+  color-scheme: dark;
+  scrollbar-color: #655775 #211b2b;
+}
+.gx-app[data-theme='dark'] :is(.gx-sidebar,.gx-topbar,.gx-panel,.gx-account-list,.gx-modal,.gx-product-card,.gx-step>span,.gx-section-number,.gx-google-letter) {
+  background: #201b29; color: var(--ink); border-color: var(--border);
+}
+.gx-app[data-theme='dark'] :is(.gx-connect-panel,.gx-private) { background: linear-gradient(120deg,#282035,#201b29); border-color: #493a60; }
+.gx-app[data-theme='dark'] :is(.gx-secondary,.gx-icon-button,.gx-table-footer button) { background: #30273e; color: #e6dcf7!important; border-color: #514164; }
+.gx-app[data-theme='dark'] :is(.gx-secondary:hover:not(:disabled),.gx-resource-option:hover,.gx-app tbody tr:hover) { background: #3a2e4b; }
+.gx-app[data-theme='dark'] .gx-primary { background: #7951d6; border-color: #a583ef; }
+.gx-app[data-theme='dark'] .gx-primary:hover:not(:disabled) { background: #8c62e5; }
+.gx-app[data-theme='dark'] :is(.gx-product-card.selected,.gx-check-option.checked,.gx-resource-option.checked,.gx-sidebar nav button.active,.gx-step-active>span) { background: #352646; border-color: #9872d5; color: #dac5ff; }
+.gx-app[data-theme='dark'] :is(.gx-config-footer,.gx-source-progress,.gx-resource-placeholder,.gx-note,.gx-inventory-note,.gx-empty-icon,.gx-app th,.gx-modal code,.gx-query-body code,.gx-avatar,.gx-count,.gx-user-avatar,.gx-field-picker-heading label span) { background: #292233; border-color: var(--border); color: #c5b6dc; }
+.gx-app[data-theme='dark'] :is(.gx-panel-title,.gx-check-option,.gx-account-row,.gx-resource-options,.gx-field-search,.gx-source-progress>div,.gx-history-row,td,th) { border-color: var(--border); }
+.gx-app[data-theme='dark'] :is(input:not([type=checkbox]),select,textarea) { background: #18141f; color: #eee7f8; border-color: #554861; }
+.gx-app[data-theme='dark'] :is(input,textarea)::placeholder { color: #b0a3bf; opacity: 1; }
+.gx-app[data-theme='dark'] :is(select:disabled,textarea:disabled) { background: #292331; color: #ac9eba; }
+.gx-app[data-theme='dark'] :is(.gx-topbar strong,.gx-product-card strong,.gx-result-summary strong,.gx-empty h3,.gx-empty strong,td) { color: #e3d9ef; }
+.gx-app[data-theme='dark'] :is(.gx-product-description,.gx-account-row small,.gx-resource-option small,.gx-resource-options legend,.gx-source-progress small,.gx-source-progress>div>span:last-child,.gx-check-option code,.gx-field small,.gx-field-picker-heading small,.gx-incremental small,.gx-result-summary,.gx-table-footer,.gx-empty p,.gx-empty-pills span,.gx-history-row small,.gx-modal p,.gx-modal li,.gx-page-footer,.gx-footer-right,.gx-help,.gx-nav-label,.gx-sidebar nav button,.gx-date-note,.gx-date-note span,.gx-inventory-note p,.gx-sub-label) { color: #bdb0cd!important; }
+.gx-app[data-theme='dark'] .gx-alert { background: #40262b; border-color: #88515b; color: #ffb5ae; }
+.gx-app[data-theme='dark'] .gx-resource-notice { background: #383021; border-color: #786341; color: #eed194; }
+.gx-app[data-theme='dark'] :is(.gx-job-status,.gx-connected-badge) { background: #352946; color: #dac2fc; }
+.gx-app[data-theme='dark'] :is(.gx-job-status.complete,.gx-connected-badge) { background: #1d3b30; color: #91e1b4; }
+.gx-app[data-theme='dark'] .gx-job-status.failed { background: #462a2c; color: #ffb0a1; }
+.gx-app[data-theme='dark'] .gx-source-progress p { color: #ffb0a1; }
+.gx-app[data-theme='dark'] .gx-job-status.partial { background: #41361f; color: #f0d08b; }
+.gx-app[data-theme='dark'] .gx-job-status.skipped { background: #273545; color: #aacde7; }
+.gx-app[data-theme='dark'] .gx-field-options { scrollbar-color: #655775 transparent; }
+.gx-app[data-theme='dark'] :is(button,a,input,textarea,select):focus-visible { outline: 2px solid #c4a4ff; outline-offset: 3px; }
+@media(max-width:800px) { .gx-brand-name { display:none; } }
+@media(max-width:450px) { .gx-theme-toggle span { display:none; } }

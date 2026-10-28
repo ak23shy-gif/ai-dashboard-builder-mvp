@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowRight, Braces, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Copy, Database, ExternalLink, FileJson, FileSpreadsheet, FolderOpen, History, Layers3, Link2, Loader2, LockKeyhole, Play, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Unplug, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, Braces, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Copy, Database, ExternalLink, FileJson, FileSpreadsheet, FolderOpen, History, Layers3, Link2, Loader2, LockKeyhole, Moon, Sun, Play, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Unplug, X } from 'lucide-react';
 import './extraction.css';
 import './multiple.css';
+import './theme.css';
 
 type Product = { id: string; name: string; description: string; dimensions: string[]; metrics: string[]; defaults: string[]; defaultMetrics: string[]; incremental: boolean; note?: string };
 type Resource = { id: string; name: string; group?: string; connection_id: string; email: string };
@@ -85,6 +86,18 @@ export function ExtractionApp() {
   const [view, setView] = useState('extract');
   const [history, setHistory] = useState<Job[]>([]);
   const [setup, setSetup] = useState(false);
+  const [darkTheme, setDarkTheme] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('extract-theme');
+      setDarkTheme(saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches);
+    } catch { /* Storage may be unavailable in private browsers. */ }
+  }, []);
+  function toggleTheme() {
+    const next = !darkTheme;
+    setDarkTheme(next);
+    try { localStorage.setItem('extract-theme', next ? 'dark' : 'light'); } catch { /* Keep the current session usable. */ }
+  }
   const [fieldSearch, setFieldSearch] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [queryKey, setQueryKey] = useState('');
@@ -269,15 +282,15 @@ export function ExtractionApp() {
   }
   const toggle = (value: string, selected: string[], set: (v: string[]) => void) => set(selected.includes(value) ? selected.filter(x => x !== value) : [...selected, value]);
 
-  return <div className="gx-app">
+  return <div className="gx-app" data-theme={darkTheme ? 'dark' : 'light'}>
     <aside className="gx-sidebar">
-      <a className="gx-brand" href="/"><span className="gx-brand-icon" aria-hidden="true" style={{ fontSize: 28 }}>£</span>Extract</a>
+      <a className="gx-brand" href="/" aria-label="Extract home"><span className="gx-brand-pound">£</span><span className="gx-brand-name">xtract</span></a>
       <div className="gx-workspace"><span className="gx-avatar"><Database size={16} /></span><div>Personal workspace<small>Local environment</small></div><LockKeyhole size={13} /></div>
       <div className="gx-nav-label">WORKSPACE</div>
       <nav><button className={view === 'extract' ? 'active' : ''} onClick={() => setView('extract')}><Layers3 size={18} />Data extraction<span className="gx-nav-dot" /></button><button className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}><History size={18} />Extraction history</button><button onClick={() => setSetup(true)}><Settings2 size={18} />Connection settings</button></nav>
       <div className="gx-sidebar-bottom"><div className="gx-private"><ShieldCheck size={19} /><strong>Your data stays yours.</strong><p>Extract directly from Google.<br />Keep your files on your computer.</p><span><i /> Built for personal use</span></div><button className="gx-help" onClick={() => setSetup(true)}><CircleHelp size={17} />Setup & documentation<ExternalLink size={13} /></button><div className="gx-user"><span className="gx-user-avatar">{status.email?.[0]?.toUpperCase() || 'P'}</span><div>{status.email || 'Personal account'}<small>Local workspace</small></div></div></div>
     </aside>
-    <div className="gx-main"><header className="gx-topbar"><div>Workspace <ChevronRight size={13} /><strong>{view === 'history' ? 'Extraction history' : 'Data extraction'}</strong></div><span className="gx-local"><span /> Running locally</span></header>
+    <div className="gx-main"><header className="gx-topbar"><div>Workspace <ChevronRight size={13} /><strong>{view === 'history' ? 'Extraction history' : 'Data extraction'}</strong></div><button type="button" className="gx-button gx-secondary gx-theme-toggle" onClick={toggleTheme} aria-pressed={darkTheme} aria-label="Dark theme">{darkTheme ? <Sun size={16} /> : <Moon size={16} />}<span>{darkTheme ? 'Light theme' : 'Dark theme'}</span></button></header>
       <main className="gx-content"><div className="gx-page-heading"><div><div className="gx-eyebrow">YOUR GOOGLE DATA, SIMPLIFIED</div><h1>{view === 'history' ? 'Extraction history' : 'Your data. Ready to go.'}</h1><p>{view === 'history' ? 'Revisit your local extractions and download your files.' : 'Connect, select, and extract. Clean data from Google, in just a few clicks.'}</p></div><button className="gx-button gx-secondary" onClick={() => setSetup(true)}><CircleHelp size={16} />Setup guide<ExternalLink size={13} /></button></div>
       {error && <div role="alert" className="gx-alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16} /></button></div>}
       {view === 'history' ? <section className="gx-panel gx-history"><div className="gx-panel-title"><h2>Recent extractions</h2><span className="gx-muted">Saved on this computer</span></div>{!status.connected ? <div className="gx-empty"><History size={30} /><h3>Connect to see your extractions</h3><p>Your extraction history belongs to your Google account.</p><button className="gx-button gx-primary" onClick={() => connect()}>Connect Google</button></div> : history.length === 0 ? <div className="gx-empty"><History size={30} /><h3>No extractions yet</h3><p>Your completed and failed runs will appear here.</p><button className="gx-button gx-primary" onClick={() => setView('extract')}>Create an extraction</button></div> : history.map(h => <div className="gx-history-row" key={h.id}><ProductIcon id={h.spec.product} small /><div><strong>{status.products.find(x => x.id === h.spec.product)?.name}</strong><small>{h.spec.targets?.length ? `${h.spec.targets.length} sources · ` : ''}{h.created} UTC · {h.spec.start} – {h.spec.end}</small></div><span className={`gx-job-status ${h.status}`}>{h.status}</span><span>{h.count.toLocaleString()} rows</span><button className="gx-button gx-secondary" onClick={() => { setOffset(0); setJob({ ...h, columns: [], rows: [] }); setView('extract'); setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 100); }}>View</button><button className="gx-icon-button" title="Delete this extraction" aria-label="Delete this extraction" disabled={['running', 'queued'].includes(h.status)} onClick={async () => { try { await request(`/jobs/${h.id}`, { method: 'DELETE' }); setHistory(items => items.filter(x => x.id !== h.id)); if (job?.id === h.id) setJob(null); } catch (e) { setError((e as Error).message); } }}><X size={16} /></button></div>)}</section> : <>
