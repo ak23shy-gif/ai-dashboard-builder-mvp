@@ -205,9 +205,11 @@ def test_rate_limit_retry_then_success(client, monkeypatch):
 
 
 def test_ads_manager_discovery_and_pagination(monkeypatch):
-    monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "test")
+    monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
     async def api(method, url, **kw):
+        assert "developer-token" not in kw["headers"]
         if url.endswith("listAccessibleCustomers"):
+            assert kw["headers"] == {}
             return {"resourceNames": ["customers/100"]}
         if "customer_client" in kw["json"]["query"]:
             return {"results": [{"customerClient": {"id": "200", "descriptiveName": "Client", "manager": False}}]}

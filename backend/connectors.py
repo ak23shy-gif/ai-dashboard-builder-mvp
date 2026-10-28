@@ -11,7 +11,7 @@ import httpx
 S = "https://www.googleapis.com/auth/"
 CATALOG = {
     "ga4": dict(name="Google Analytics 4", description="Website & app performance", scopes=[S+"analytics.readonly"], dimensions=["date", "country", "city", "deviceCategory", "sessionSource", "sessionMedium", "pagePath", "eventName"], metrics=["sessions", "activeUsers", "newUsers", "screenPageViews", "engagedSessions", "eventCount", "totalRevenue"], defaults=["date", "country"], defaultMetrics=["sessions", "activeUsers"], incremental=True),
-    "ads": dict(name="Google Ads", description="Campaigns, clicks & ad spend", scopes=[S+"adwords"], dimensions=["segments.date", "campaign.id", "campaign.name", "campaign.status", "segments.device"], metrics=["metrics.impressions", "metrics.clicks", "metrics.cost_micros", "metrics.conversions", "metrics.ctr"], defaults=["segments.date", "campaign.id", "campaign.name"], defaultMetrics=["metrics.impressions", "metrics.clicks", "metrics.cost_micros"], incremental=True, note="Requires a Google Ads developer token. Cost is returned in micros."),
+    "ads": dict(name="Google Ads", description="Campaigns, clicks & ad spend", scopes=[S+"adwords"], dimensions=["segments.date", "campaign.id", "campaign.name", "campaign.status", "segments.device"], metrics=["metrics.impressions", "metrics.clicks", "metrics.cost_micros", "metrics.conversions", "metrics.ctr"], defaults=["segments.date", "campaign.id", "campaign.name"], defaultMetrics=["metrics.impressions", "metrics.clicks", "metrics.cost_micros"], incremental=True, note="Requires Google Ads API production access for the app’s Google Cloud project. Cost is returned in micros."),
     "search": dict(name="Google Search Console", description="Search queries & organic visibility", scopes=[S+"webmasters.readonly"], dimensions=["date", "query", "page", "country", "device"], metrics=["clicks", "impressions", "ctr", "position"], defaults=["date", "query"], defaultMetrics=["clicks", "impressions", "ctr", "position"], incremental=True, note="Search Console returns top rows, not every query. Google’s privacy and daily data limits still apply."),
     "youtube": dict(name="YouTube Analytics", description="Views, watch time & engagement", scopes=[S+"youtube.readonly", S+"yt-analytics.readonly"], dimensions=["day", "country", "video"], metrics=["views", "estimatedMinutesWatched", "averageViewDuration", "likes", "comments", "subscribersGained"], defaults=["day"], defaultMetrics=["views", "estimatedMinutesWatched"], incremental=True, note="Channel reports only. Google validates compatible dimension/metric combinations. Brand channels may require a separate OAuth selection."),
     "business": dict(name="Google Business Profile", description="Business locations & contact details", scopes=[S+"business.manage"], dimensions=[], metrics=[], defaults=[], defaultMetrics=[], incremental=False, note="Location inventory export. Requires Google Business Profile API approval; the API requires the business.manage scope even for reads."),
@@ -109,10 +109,9 @@ class Ads(Connector):
         return "https://googleads.googleapis.com/" + os.getenv("GOOGLE_ADS_API_VERSION", "v25")
 
     def headers(self, manager=None):
-        token = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN")
-        if not token:
-            raise ValueError("Add GOOGLE_ADS_DEVELOPER_TOKEN to backend/.env to use Google Ads.")
-        return {"developer-token": token, **({"login-customer-id": manager} if manager else {})}
+        # Access is approved for the OAuth Cloud project; developer tokens are retired.
+        return {"login-customer-id": manager} if manager else {}
+
 
     async def search(self, customer, query, manager=None):
         body = {"query": query}
