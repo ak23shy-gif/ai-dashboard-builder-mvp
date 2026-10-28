@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Google API Data Extractor',
+  title: 'Extract',
   description: 'Google data extraction app for Power BI-ready API exports.',
 };
 

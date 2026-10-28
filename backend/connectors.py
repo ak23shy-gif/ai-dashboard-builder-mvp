@@ -43,6 +43,46 @@ class Connector:
         return {}
 
 
+def ga4_filters(raw):
+    """Accept API request filters or a standalone dimension FilterExpression."""
+    if not raw or (isinstance(raw, str) and not raw.strip()):
+        return {}
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Filters JSON must be valid JSON with double-quoted keys and values.") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("Filters JSON must be an object.")
+    if not parsed:
+        return {}
+    wrappers = {"dimensionFilter", "metricFilter"}
+    expressions = {"filter", "andGroup", "orGroup", "notExpression"}
+    if set(parsed).issubset(expressions):
+        parsed = {"dimensionFilter": parsed}
+    if not set(parsed).issubset(wrappers):
+        raise ValueError("GA4 filters must contain dimensionFilter or metricFilter, or a direct filter/andGroup/orGroup/notExpression expression.")
+
+    def validate(expression):
+        if not isinstance(expression, dict) or len(expression) != 1 or not set(expression).issubset(expressions):
+            raise ValueError("Each GA4 filter expression needs exactly one of filter, andGroup, orGroup, or notExpression.")
+        kind, value = next(iter(expression.items()))
+        if kind == "filter":
+            kinds = {"stringFilter", "inListFilter", "numericFilter", "betweenFilter", "emptyFilter"}
+            if not isinstance(value, dict) or not isinstance(value.get("fieldName"), str) or not value["fieldName"].strip() or len(kinds.intersection(value)) != 1:
+                raise ValueError("A GA4 filter needs fieldName and one filter type, such as stringFilter.")
+        elif kind == "notExpression":
+            validate(value)
+        else:
+            children = value.get("expressions") if isinstance(value, dict) else None
+            if not isinstance(children, list) or not children:
+                raise ValueError("GA4 filter groups need a non-empty expressions array.")
+            for child in children:
+                validate(child)
+    for expression in parsed.values():
+        validate(expression)
+    return parsed
+
+
 class GA4(Connector):
     async def discover(self):
         out = []
@@ -73,17 +113,7 @@ class GA4(Connector):
             chunk_end = min(end_date, current + timedelta(days=chunk_days - 1))
             offset = 0
             base_body = {"dateRanges": [{"startDate": current.isoformat(), "endDate": chunk_end.isoformat()}], "dimensions": [{"name": x} for x in q.dimensions], "metrics": [{"name": x} for x in q.metrics], "limit": int(options.get("limit", 100000) or 100000), "orderBys": [{"dimension": {"dimensionName": x}} for x in q.dimensions]}
-            filters = options.get("filters")
-            if filters:
-                try:
-                    parsed = json.loads(filters)
-                except json.JSONDecodeError as exc:
-                    raise ValueError("Filters must be valid JSON.") from exc
-                if not isinstance(parsed, Mapping):
-                    raise ValueError("Filters must be a JSON object.")
-                for key in ("dimensionFilter", "metricFilter"):
-                    if key in parsed:
-                        base_body[key] = parsed[key]
+            base_body.update(ga4_filters(options.get("filters")))
             while True:
                 body = {**base_body, "offset": offset}
                 d = await self.api("POST", f"https://analyticsdata.googleapis.com/v1beta/{q.resource}:runReport", json=body)

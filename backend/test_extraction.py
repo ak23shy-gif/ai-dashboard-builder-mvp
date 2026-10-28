@@ -620,3 +620,27 @@ def test_ads_permission_error_includes_google_error_code(monkeypatch):
     monkeypatch.setattr(main, "token_value", token)
     with pytest.raises(ValueError, match="USER_PERMISSION_DENIED: User does not have permission"):
         asyncio.run(main.api("GET", "https://googleads.googleapis.com/v25/customers:listAccessibleCustomers"))
+
+
+@pytest.mark.parametrize("wrapped", [True, False])
+def test_ga4_filters_are_sent_on_every_page(wrapped):
+    expression = {"filter": {"fieldName": "country", "stringFilter": {"matchType": "EXACT", "value": "United Kingdom"}}}
+    raw = {"dimensionFilter": expression} if wrapped else expression
+    calls = []
+    async def api(method, url, **kwargs):
+        body = kwargs["json"]
+        calls.append(body)
+        assert body["dimensionFilter"] == expression
+        return {"rowCount": 2, "dimensionHeaders": [{"name": "country"}], "metricHeaders": [{"name": "sessions", "type": "TYPE_INTEGER"}], "rows": [{"dimensionValues": [{"value": "United Kingdom"}], "metricValues": [{"value": "2"}]}]}
+    async def run():
+        q = SimpleNamespace(resource="properties/1", start="2026-08-01", end="2026-08-02", dimensions=["country"], metrics=["sessions"], options={"filters": json.dumps(raw), "limit": "1"})
+        return [batch async for batch in GA4(api).extract(q)]
+    assert len(asyncio.run(run())) == 2
+    assert [call["offset"] for call in calls] == [0, 1]
+
+
+@pytest.mark.parametrize("raw", ['{"country":"UK"}', '[1]', '{bad}', '{"dimensionFilter":{}}', '{"andGroup":{"expressions":[]}}'])
+def test_ga4_invalid_filters_fail_instead_of_returning_unfiltered_data(raw):
+    from backend.connectors import ga4_filters
+    with pytest.raises(ValueError):
+        ga4_filters(raw)
