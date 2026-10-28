@@ -190,6 +190,17 @@ async def api(method, url, workspace=None, connection=None, **kwargs):
                 continue
             if response.is_error:
                 message = error.get("message", "Google API request failed.") if isinstance(error, dict) else "Google API request failed."
+                # Ads puts actionable authorization errors inside GoogleAdsFailure details.
+                if isinstance(error, dict) and "googleads.googleapis.com/" in url:
+                    details = []
+                    for detail in error.get("details", []):
+                        for item in detail.get("errors", []):
+                            codes = ", ".join(str(v) for v in item.get("errorCode", {}).values())
+                            details.append(f"{codes}: {item.get('message', '')}".strip(": "))
+                    if details:
+                        message += " " + " | ".join(dict.fromkeys(details))
+                if "mybusiness" in url and response.status_code in (403, 429):
+                    message += " Check Business Profile API approval and quotas in the Google Cloud project used by this app. Enable My Business Account Management API and My Business Business Information API; a zero quota requires Google approval."
                 raise ValueError(f"Google API ({response.status_code}): {message}")
             return body
     raise ValueError("Google request retries exhausted.")

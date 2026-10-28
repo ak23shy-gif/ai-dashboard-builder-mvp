@@ -597,3 +597,26 @@ def test_resource_discovery_cache_reused_for_fields(client, monkeypatch):
     assert resp.status_code == 200, resp.text
     assert client.get("/products/ga4/fields?connection_id=user1&resource=properties/1").status_code == 200
     assert calls["discover"] == 1
+
+
+def test_ads_permission_error_includes_google_error_code(monkeypatch):
+    import httpx
+
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def request(self, method, url, **kwargs):
+            return httpx.Response(403, json={"error": {
+                "message": "The caller does not have permission",
+                "details": [{"errors": [{
+                    "errorCode": {"authorizationError": "USER_PERMISSION_DENIED"},
+                    "message": "User does not have permission to access customer."
+                }]}]
+            }}, request=httpx.Request(method, url))
+
+    async def token(*args): return "test-token"
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main, "token_value", token)
+    with pytest.raises(ValueError, match="USER_PERMISSION_DENIED: User does not have permission"):
+        asyncio.run(main.api("GET", "https://googleads.googleapis.com/v25/customers:listAccessibleCustomers"))
