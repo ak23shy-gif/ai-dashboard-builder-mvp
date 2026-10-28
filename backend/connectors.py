@@ -2,6 +2,9 @@
 import json
 import os
 import re
+import asyncio
+import time
+import weakref
 from collections.abc import Mapping
 from datetime import date, timedelta
 from urllib.parse import quote
@@ -134,6 +137,44 @@ class GA4(Connector):
 
 
 class Ads(Connector):
+    _metadata_cache = {}
+    _metadata_locks = weakref.WeakKeyDictionary()
+
+    async def metadata(self):
+        # Field definitions are public schema, not customer data. Share by API
+        # version and coalesce simultaneous requests from multi-account selections.
+        lock = self._metadata_locks.setdefault(asyncio.get_running_loop(), asyncio.Lock())
+        async with lock:
+            cached = self._metadata_cache.get(self.base)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+            body = {"query": "SELECT name, category, selectable, data_type, is_repeated, attribute_resources, metrics, segments, selectable_with", "pageSize": 10000}
+            metadata = {}
+            while True:
+                data = await self.api("POST", self.base + "/googleAdsFields:search", headers=self.headers(), json=body)
+                metadata.update({f["name"]: f for f in data.get("results", [])})
+                if not data.get("nextPageToken"):
+                    break
+                body = {**body, "pageToken": data["nextPageToken"]}
+            if not metadata:
+                raise ValueError("Google Ads returned an empty field catalogue. Retry loading fields.")
+            self._metadata_cache[self.base] = (time.monotonic() + 3600, metadata)
+            return metadata
+
+    async def fields(self, rid):
+        metadata = await self.metadata()
+        scalar = {name: f for name, f in metadata.items() if f.get("selectable") and not f.get("isRepeated") and f.get("dataType") not in ("MESSAGE", "UNKNOWN", "UNSPECIFIED") and f.get("category") != "RESOURCE"}
+        reports = {}
+        for name, definition in metadata.items():
+            if definition.get("category") != "RESOURCE" or not definition.get("metrics") or "segments.date" not in definition.get("segments", []):
+                continue
+            attributes = {name, *definition.get("attributeResources", [])}
+            segments = set(definition.get("segments", []))
+            dimensions = sorted(key for key, f in scalar.items() if f.get("category") != "METRIC" and (key in segments or key.split(".")[0] in attributes))
+            metrics = sorted(set(definition.get("metrics", [])) & scalar.keys())
+            reports[name] = {"dimensions": dimensions, "metrics": metrics}
+        return {"dimensions": sorted({f for r in reports.values() for f in r["dimensions"]}), "metrics": sorted({f for r in reports.values() for f in r["metrics"]}), "reports": reports}
+
     @property
     def base(self):
         return "https://googleads.googleapis.com/" + os.getenv("GOOGLE_ADS_API_VERSION", "v25")
@@ -166,9 +207,26 @@ class Ads(Connector):
         return list(out.values())
 
     async def extract(self, q):
-        cid, manager = q.resource.split(":")
+        cid, _, manager = q.resource.partition(":")
         fields = q.dimensions + q.metrics
-        query = f"SELECT {', '.join(fields)} FROM campaign WHERE segments.date BETWEEN '{q.start}' AND '{q.end}'"
+        report = (getattr(q, "options", {}) or {}).get("ads_report", "campaign")
+        catalogue = await self.fields(q.resource)
+        supported = catalogue["reports"].get(report)
+        if not supported or not set(q.dimensions).issubset(supported["dimensions"]) or not set(q.metrics).issubset(supported["metrics"]):
+            raise ValueError("These Google Ads fields do not belong to the selected report. Choose a matching report type and fields.")
+        if not fields:
+            raise ValueError("Select at least one Google Ads field.")
+        metadata = await self.metadata()
+        # Google also enforces metric/segment compatibility within each report.
+        for segment in q.dimensions:
+            definition = metadata[segment]
+            compatible = set(definition.get("selectableWith", []))
+            if definition.get("category") == "SEGMENT" and compatible:
+                invalid = [m for m in q.metrics if m not in compatible]
+                if invalid:
+                    raise ValueError(f"Google Ads cannot combine {segment} with {', '.join(invalid)}. Remove the segment or those metrics.")
+        start, end = date.fromisoformat(q.start).isoformat(), date.fromisoformat(q.end).isoformat()
+        query = f"SELECT {', '.join(fields)} FROM {report} WHERE segments.date BETWEEN '{start}' AND '{end}'"
         async for rows in self.search(cid, query, manager):
             out = []
             for row in rows:
@@ -179,7 +237,7 @@ class Ads(Connector):
                         camel = re.sub(r"_([a-z])", lambda m: m[1].upper(), part)
                         value = value.get(camel) if isinstance(value, dict) else None
                     if value is not None and field in q.metrics:
-                        value = float(value) if field in ("metrics.conversions", "metrics.ctr") else int(value)
+                        value = float(value) if metadata[field].get("dataType") in ("DOUBLE", "FLOAT") else int(value)
                     result[field] = value
                 out.append(result)
             yield out

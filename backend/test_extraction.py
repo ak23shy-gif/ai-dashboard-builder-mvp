@@ -206,6 +206,12 @@ def test_rate_limit_retry_then_success(client, monkeypatch):
 
 def test_ads_manager_discovery_and_pagination(monkeypatch):
     monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
+    async def metadata(self):
+        return {
+            "campaign": {"category": "RESOURCE", "segments": ["segments.date"], "metrics": ["metrics.clicks", "metrics.cost_micros"]},
+            **{name: {"selectable": True, "category": "METRIC" if name.startswith("metrics.") else "ATTRIBUTE", "dataType": "INT64"} for name in ("campaign.id", "metrics.clicks", "metrics.cost_micros")},
+        }
+    monkeypatch.setattr(Ads, "metadata", metadata)
     async def api(method, url, **kw):
         assert "developer-token" not in kw["headers"]
         if url.endswith("listAccessibleCustomers"):
