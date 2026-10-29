@@ -1,5 +1,7 @@
 {
   "framework": "nextjs",
+  "buildCommand": "node scripts/check-extractor-deployment.mjs && npm run build",
+  "ignoreCommand": "node scripts/check-extractor-deployment.mjs --ignore",
   "regions": ["lhr1"],
   "functions": {
     "app/api/**/*.ts": {

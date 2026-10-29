@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3001",
-    "build": "next build",
+    "build": "node scripts/check-extractor-deployment.mjs && next build",
     "start": "next start --hostname 127.0.0.1 --port 3001",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
