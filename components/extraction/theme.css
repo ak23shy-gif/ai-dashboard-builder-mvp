@@ -38,6 +38,46 @@
 .gx-app[data-theme='dark'] .gx-job-status.partial { background: #41361f; color: #f0d08b; }
 .gx-app[data-theme='dark'] .gx-job-status.skipped { background: #273545; color: #aacde7; }
 .gx-app[data-theme='dark'] .gx-field-options { scrollbar-color: #655775 transparent; }
+
+.gx-field-picker-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gx-field-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gx-field-picker-actions button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--purple);
+  padding: 4px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.gx-field-picker-actions button:hover:not(:disabled) {
+  background: #f5f1ff;
+}
+
+.gx-app[data-theme='dark'] .gx-field-picker-actions button {
+  background: #211b29;
+  color: #c7adff;
+}
+
+@media (max-width: 620px) {
+  .gx-field-picker-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 .gx-app[data-theme='dark'] :is(button,a,input,textarea,select):focus-visible { outline: 2px solid #c4a4ff; outline-offset: 3px; }
 @media(max-width:800px) { .gx-brand-name { display:none; } }
 @media(max-width:450px) { .gx-theme-toggle span { display:none; } }
