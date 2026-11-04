@@ -108,6 +108,13 @@ type Fields = {
   metrics?: string[];
   tabs?: { title: string }[];
 };
+type ExportFormat = "csv" | "json" | "xlsx_report";
+type ExportProgress = {
+  format: ExportFormat;
+  percent: number;
+  phase: "preparing" | "downloading" | "complete" | "error";
+  message?: string;
+};
 const resourceKey = (r: Resource) => JSON.stringify([r.connection_id, r.id]);
 const fallback: Product[] = [
   {
@@ -335,6 +342,8 @@ export function ExtractionApp() {
   const [refresh, setRefresh] = useState(0);
   const [queryKey, setQueryKey] = useState("");
   const [editableQueryUrl, setEditableQueryUrl] = useState("");
+  const [exportProgress, setExportProgress] =
+    useState<ExportProgress | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const p = status.products.find((x) => x.id === product) || fallback[0];
   const busy =
@@ -364,6 +373,120 @@ export function ExtractionApp() {
     product === "api"
       ? !!apiOptions.url.trim()
       : status.connected && selected.length > 0;
+
+  const exportLabel = (format: ExportFormat) =>
+    format === "xlsx_report" ? "Excel report" : format.toUpperCase();
+
+  const exportUrl = (format: ExportFormat) => {
+    if (!job) return "";
+    if (job.id === "direct-query") {
+      return urlWithFormat(
+        job.spec.options.url || editableQueryUrl,
+        format as "csv" | "json",
+      );
+    }
+    return `${publicApiBase}/jobs/${encodeURIComponent(job.id)}/export?format=${format}${job.status === "partial" ? "&successful_only=true" : ""}`;
+  };
+
+  async function downloadExport(format: ExportFormat) {
+    if (!job || exportProgress) return;
+
+    const url = exportUrl(format);
+    if (!url) return;
+
+    let preparationTimer: ReturnType<typeof setInterval> | undefined;
+    setExportProgress({ format, percent: 2, phase: "preparing" });
+    preparationTimer = setInterval(() => {
+      setExportProgress((current) => {
+        if (
+          !current ||
+          current.format !== format ||
+          current.phase !== "preparing"
+        )
+          return current;
+        return { ...current, percent: Math.min(18, current.percent + 1) };
+      });
+    }, 700);
+
+    try {
+      const response = await fetch(url, { credentials: "include" });
+      if (preparationTimer) clearInterval(preparationTimer);
+
+      if (!response.ok) {
+        const raw = await response.text();
+        let detail = raw;
+        try {
+          detail = JSON.parse(raw)?.detail || raw;
+        } catch {
+          /* Use the response text as the visible error. */
+        }
+        throw new Error(detail || `Export failed with HTTP ${response.status}.`);
+      }
+
+      const total = Number(response.headers.get("content-length")) || 0;
+      const reader = response.body?.getReader();
+      const chunks: BlobPart[] = [];
+      let received = 0;
+      setExportProgress({ format, percent: 20, phase: "downloading" });
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value.slice().buffer as ArrayBuffer);
+            received += value.byteLength;
+            const measured = total
+              ? 20 + Math.round((received / total) * 75)
+              : 20 + Math.min(74, Math.round(Math.log10(received + 1) * 12));
+            setExportProgress({
+              format,
+              percent: Math.min(95, measured),
+              phase: "downloading",
+            });
+          }
+        }
+      } else {
+        chunks.push(new Uint8Array(await response.arrayBuffer()));
+      }
+
+      const disposition = response.headers.get("content-disposition") || "";
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const plainName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+      const fallbackName =
+        format === "xlsx_report"
+          ? "ga4-formatted-report.xlsx"
+          : `extract.${format}`;
+      const filename = decodeURIComponent(
+        encodedName || plainName || fallbackName,
+      );
+      const blob = new Blob(chunks, {
+        type: response.headers.get("content-type") || "application/octet-stream",
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+      setExportProgress({ format, percent: 100, phase: "complete" });
+      window.setTimeout(() => setExportProgress(null), 1600);
+    } catch (downloadError) {
+      if (preparationTimer) clearInterval(preparationTimer);
+      setExportProgress({
+        format,
+        percent: 0,
+        phase: "error",
+        message:
+          downloadError instanceof Error
+            ? downloadError.message
+            : "The export could not be downloaded.",
+      });
+    }
+  }
   const queryUrl = (() => {
     if (!canQuery || !queryKey) return "";
     const params = new URLSearchParams();
@@ -1996,47 +2119,41 @@ export function ExtractionApp() {
                       ] as Array<"csv" | "json" | "xlsx_report">
                     ).map((fmt) =>
                       job && ["complete", "partial"].includes(job.status) ? (
-                        job.id === "direct-query" ? (
-                          <a
-                            className="gx-button gx-secondary"
-                            key={fmt}
-                            href={urlWithFormat(
-                              job.spec.options.url || editableQueryUrl,
-                              fmt as "csv" | "json",
-                            )}
-                          >
-                            {fmt === "csv" ? (
-                              <ArrowDownToLine size={15} />
-                            ) : fmt === "xlsx_report" ? (
-                              <FileSpreadsheet size={15} />
-                            ) : (
-                              <FileJson size={15} />
-                            )}
-                            {fmt === "xlsx_report"
-                              ? "Excel report"
-                              : fmt.toUpperCase()}
-                          </a>
-                        ) : (
-                          <a
-                            className="gx-button gx-secondary"
-                            key={fmt}
-                            href={`${publicApiBase}/jobs/${encodeURIComponent(job.id)}/export?format=${fmt}${job.status === "partial" ? "&successful_only=true" : ""}`}
-                          >
-                            {fmt === "csv" ? (
-                              <ArrowDownToLine size={15} />
-                            ) : fmt === "xlsx_report" ? (
-                              <FileSpreadsheet size={15} />
-                            ) : (
-                              <FileJson size={15} />
-                            )}
-                            {fmt === "xlsx_report"
-                              ? "Excel report"
-                              : fmt.toUpperCase()}
-                            {job.status === "partial"
-                              ? " (successful sources)"
-                              : ""}
-                          </a>
-                        )
+                        <button
+                          className="gx-button gx-secondary"
+                          key={fmt}
+                          type="button"
+                          disabled={!!exportProgress}
+                          aria-busy={exportProgress?.format === fmt}
+                          onClick={() => downloadExport(fmt)}
+                        >
+                          {exportProgress?.format === fmt &&
+                          exportProgress.phase !== "complete" &&
+                          exportProgress.phase !== "error" ? (
+                            <Loader2 size={15} className="gx-spin" />
+                          ) : exportProgress?.format === fmt &&
+                            exportProgress.phase === "complete" ? (
+                            <Check size={15} />
+                          ) : fmt === "csv" ? (
+                            <ArrowDownToLine size={15} />
+                          ) : fmt === "xlsx_report" ? (
+                            <FileSpreadsheet size={15} />
+                          ) : (
+                            <FileJson size={15} />
+                          )}
+                          {exportProgress?.format === fmt &&
+                          !["error", "complete"].includes(
+                            exportProgress.phase,
+                          )
+                            ? `${exportLabel(fmt)} ${exportProgress.percent}%`
+                            : exportProgress?.format === fmt &&
+                                exportProgress.phase === "complete"
+                              ? `${exportLabel(fmt)} ready`
+                              : exportLabel(fmt)}
+                          {!exportProgress && job.status === "partial"
+                            ? " (successful sources)"
+                            : ""}
+                        </button>
                       ) : (
                         <button
                           key={fmt}
@@ -2058,6 +2175,52 @@ export function ExtractionApp() {
                     )}
                   </div>
                 </div>
+                {exportProgress && (
+                  <div
+                    className={`gx-export-progress ${exportProgress.phase}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="gx-export-progress-copy">
+                      <span>
+                        {exportProgress.phase === "preparing"
+                          ? `Preparing ${exportLabel(exportProgress.format)}`
+                          : exportProgress.phase === "downloading"
+                            ? `Downloading ${exportLabel(exportProgress.format)}`
+                            : exportProgress.phase === "complete"
+                              ? `${exportLabel(exportProgress.format)} download started`
+                              : `Could not export ${exportLabel(exportProgress.format)}`}
+                      </span>
+                      <strong>
+                        {exportProgress.phase === "error"
+                          ? "Failed"
+                          : `${exportProgress.percent}%`}
+                      </strong>
+                    </div>
+                    {exportProgress.phase !== "error" && (
+                      <div
+                        className="gx-export-progress-track"
+                        aria-hidden="true"
+                      >
+                        <span
+                          style={{ width: `${exportProgress.percent}%` }}
+                        />
+                      </div>
+                    )}
+                    {exportProgress.message && (
+                      <p>{exportProgress.message}</p>
+                    )}
+                    {exportProgress.phase === "error" && (
+                      <button
+                        type="button"
+                        className="gx-export-dismiss"
+                        onClick={() => setExportProgress(null)}
+                      >
+                        Dismiss
+                      </button>
+                    )}
+                  </div>
+                )}
                 {!job ? (
                   <div className="gx-empty">
                     <div className="gx-empty-icon">

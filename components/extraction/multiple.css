@@ -48,3 +48,82 @@
   .gx-export-actions { flex-wrap: wrap; justify-content: flex-end; }
   .gx-source-progress { padding: 10px 14px; }
 }
+
+.gx-export-progress {
+  margin: 0 22px 16px;
+  padding: 12px 14px;
+  border: 1px solid #e6def8;
+  border-radius: 8px;
+  background: #faf8ff;
+  color: #746485;
+  font-size: 10px;
+}
+.gx-export-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.gx-export-progress-copy strong { color: var(--purple); }
+.gx-app button[aria-busy='true']:disabled { opacity: 1; }
+.gx-export-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9e3f5;
+}
+.gx-export-progress-track span {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--purple), #a788ef);
+  transition: width .25s ease;
+}
+.gx-export-progress.complete {
+  border-color: #cce9d9;
+  background: #f1faf5;
+  color: #347858;
+}
+.gx-export-progress.complete .gx-export-progress-copy strong { color: #2f8b62; }
+.gx-export-progress.complete .gx-export-progress-track { background: #d9efe3; }
+.gx-export-progress.complete .gx-export-progress-track span { background: #43a984; }
+.gx-export-progress.error {
+  position: relative;
+  padding-right: 76px;
+  border-color: #f1d1c9;
+  background: #fff3f1;
+  color: #a04736;
+}
+.gx-export-progress.error .gx-export-progress-copy { margin-bottom: 3px; }
+.gx-export-progress.error p { margin: 0; overflow-wrap: anywhere; }
+.gx-export-dismiss {
+  position: absolute;
+  top: 11px;
+  right: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 9px;
+  text-decoration: underline;
+}
+.gx-app[data-theme='dark'] .gx-export-progress {
+  border-color: #4b3b67;
+  background: #211a2d;
+  color: #c4b7d5;
+}
+.gx-app[data-theme='dark'] .gx-export-progress-track { background: #392d4d; }
+.gx-app[data-theme='dark'] .gx-export-progress.complete {
+  border-color: #315b49;
+  background: #172820;
+  color: #9ad2b8;
+}
+.gx-app[data-theme='dark'] .gx-export-progress.error {
+  border-color: #6c3c38;
+  background: #321d1d;
+  color: #efa69d;
+}
+@media(max-width:600px) {
+  .gx-export-progress { margin: 0 16px 14px; }
+}
