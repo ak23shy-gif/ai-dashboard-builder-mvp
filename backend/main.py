@@ -17,13 +17,14 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .connectors import CATALOG, CONNECTORS, find_rows, flatten
 from .storage import db, init, insert_rows, export_rows, column_names, row_value
+from .excel_report import build_ga4_excel_report
 from .accounts import cipher, save_token, read_token, list_accounts, remove_account
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -1219,10 +1220,36 @@ async def export(jid: str, request: Request, format: str = "csv", successful_onl
     row = get_job(jid, requested_owner)
     if row["status"] != "complete" and not (row["status"] == "partial" and successful_only):
         raise HTTPException(409, "Only completed extractions can be exported.")
-    if format not in ("csv", "json"):
-        raise HTTPException(422, "Choose CSV or JSON.")
-    product = json.loads(row["spec"])["product"]
+    if format not in ("csv", "json", "xlsx_report"):
+        raise HTTPException(422, "Choose CSV, JSON, or Excel report.")
+    spec = json.loads(row["spec"])
+    product = spec["product"]
     suffix = "_successful_sources_only" if row["status"] == "partial" else ""
+    if format == "xlsx_report":
+        if product != "ga4":
+            raise HTTPException(422, "The formatted Excel report is currently available for GA4 extractions.")
+        with db() as c:
+            sources = [dict(source) for source in c.execute("SELECT * FROM job_sources WHERE job=? ORDER BY position", (jid,))]
+        if not sources:
+            sources = [{
+                "connection_id": spec.get("connection_id") or requested_owner,
+                "resource": spec.get("resource", ""),
+                "name": spec.get("resource", "Google Analytics 4"),
+                "status": "complete",
+            }]
+        if row["status"] == "partial":
+            sources = [source for source in sources if source["status"] == "complete"]
+        content, _warnings = await build_ga4_excel_report(
+            spec,
+            sources,
+            lambda report_product, connection_id: connector_for_query(report_product, requested_owner, connection_id),
+        )
+        filename = f"ga4_report_{spec['end']}{suffix}.xlsx"
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     return StreamingResponse(export_rows(jid, json.loads(row["columns"]), format), media_type="text/csv; charset=utf-8" if format == "csv" else "application/json", headers={"Content-Disposition": f'attachment; filename="{product}_{jid[:8]}{suffix}.{format}"'})
 
 

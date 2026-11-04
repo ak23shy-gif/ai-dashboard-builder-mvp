@@ -1986,7 +1986,15 @@ export function ExtractionApp() {
                     )}
                   </h2>
                   <div className="gx-export-actions">
-                    {(["csv", "json"] as const).map((fmt) =>
+                    {(
+                      [
+                        "csv",
+                        "json",
+                        ...(product === "ga4" && job?.id !== "direct-query"
+                          ? ["xlsx_report" as const]
+                          : []),
+                      ] as Array<"csv" | "json" | "xlsx_report">
+                    ).map((fmt) =>
                       job && ["complete", "partial"].includes(job.status) ? (
                         job.id === "direct-query" ? (
                           <a
@@ -1994,15 +2002,19 @@ export function ExtractionApp() {
                             key={fmt}
                             href={urlWithFormat(
                               job.spec.options.url || editableQueryUrl,
-                              fmt,
+                              fmt as "csv" | "json",
                             )}
                           >
                             {fmt === "csv" ? (
                               <ArrowDownToLine size={15} />
+                            ) : fmt === "xlsx_report" ? (
+                              <FileSpreadsheet size={15} />
                             ) : (
                               <FileJson size={15} />
                             )}
-                            {fmt.toUpperCase()}
+                            {fmt === "xlsx_report"
+                              ? "Excel report"
+                              : fmt.toUpperCase()}
                           </a>
                         ) : (
                           <a
@@ -2012,10 +2024,14 @@ export function ExtractionApp() {
                           >
                             {fmt === "csv" ? (
                               <ArrowDownToLine size={15} />
+                            ) : fmt === "xlsx_report" ? (
+                              <FileSpreadsheet size={15} />
                             ) : (
                               <FileJson size={15} />
                             )}
-                            {fmt.toUpperCase()}
+                            {fmt === "xlsx_report"
+                              ? "Excel report"
+                              : fmt.toUpperCase()}
                             {job.status === "partial"
                               ? " (successful sources)"
                               : ""}
@@ -2029,10 +2045,14 @@ export function ExtractionApp() {
                         >
                           {fmt === "csv" ? (
                             <ArrowDownToLine size={15} />
+                          ) : fmt === "xlsx_report" ? (
+                            <FileSpreadsheet size={15} />
                           ) : (
                             <FileJson size={15} />
                           )}
-                          {fmt.toUpperCase()}
+                          {fmt === "xlsx_report"
+                            ? "Excel report"
+                            : fmt.toUpperCase()}
                         </button>
                       ),
                     )}
@@ -2051,8 +2071,8 @@ export function ExtractionApp() {
                       Select your source and fields, then click{" "}
                       <strong>Extract data.</strong>
                       <br />
-                      Your results will appear here, ready for CSV or JSON
-                      export.
+                      Your results will appear here, ready for CSV, JSON or a
+                      formatted Excel report.
                     </p>
                     <div className="gx-empty-pills">
                       <span>
@@ -2065,7 +2085,7 @@ export function ExtractionApp() {
                       </span>
                       <span>
                         <Check size={12} />
-                        CSV & JSON
+                        CSV, JSON & Excel report
                       </span>
                     </div>
                   </div>

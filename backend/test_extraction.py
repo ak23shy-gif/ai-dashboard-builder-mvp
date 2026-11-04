@@ -31,7 +31,7 @@ def login(client, uid="user1"):
 
 def job_record(jid="job1", status="complete", owner="user1", columns=None):
     with storage.db() as c:
-        c.execute("INSERT INTO jobs(id,owner,status,spec,columns) VALUES (?,?,?,?,?)", (jid, owner, status, json.dumps({"product": "ga4"}), json.dumps(columns or [])))
+        c.execute("INSERT INTO jobs(id,owner,status,spec,columns) VALUES (?,?,?,?,?)", (jid, owner, status, json.dumps({"product": "ga4", "resource": "properties/1", "start": "2026-10-01", "end": "2026-10-31"}), json.dumps(columns or [])))
 
 
 def test_postgres_sql_translation_escapes_literal_percent():
@@ -121,6 +121,22 @@ def test_failed_export_is_blocked_and_empty_export_keeps_headers(client):
     job_record("empty", columns=["date", "sessions"])
     assert client.get("/jobs/empty/export?format=json").json() == []
     assert "date,sessions" in client.get("/jobs/empty/export").text
+
+
+def test_excel_report_is_additional_ga4_export(client, monkeypatch):
+    login(client)
+    job_record()
+
+    async def fake_report(spec, sources, connector_factory):
+        assert spec["product"] == "ga4"
+        return b"PK\x03\x04workbook", []
+
+    monkeypatch.setattr(main, "build_ga4_excel_report", fake_report)
+    response = client.get("/jobs/job1/export?format=xlsx_report")
+    assert response.status_code == 200
+    assert response.content.startswith(b"PK\x03\x04")
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert response.headers["content-disposition"].endswith('.xlsx"')
 
 
 def test_column_collisions_and_schema_drift(client):

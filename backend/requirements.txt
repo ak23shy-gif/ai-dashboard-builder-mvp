@@ -5,3 +5,4 @@ cryptography>=44,<47
 python-dotenv>=1,<2
 pytest>=8,<10
 psycopg[binary]>=3.2,<4
+xlsxwriter>=3.2,<4
