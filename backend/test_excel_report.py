@@ -32,16 +32,26 @@ class FakeGA4:
 def test_build_ga4_excel_report_matches_report_pack_shape():
     spec = {"start": "2026-01-01", "end": "2026-10-31"}
     sources = [{"connection_id": "user", "resource": "properties/1", "name": "Website", "status": "complete"}]
-    content, warnings = asyncio.run(build_ga4_excel_report(spec, sources, lambda product, connection: FakeGA4()))
+    content, warnings = asyncio.run(
+        build_ga4_excel_report(
+            spec,
+            sources,
+            lambda product, connection: FakeGA4(),
+            [{"country": "United Kingdom", "sessions": 100}],
+            ["country", "sessions"],
+        )
+    )
     assert content.startswith(b"PK\x03\x04")
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         workbook_xml = archive.read("xl/workbook.xml").decode("utf-8")
         strings = archive.read("xl/sharedStrings.xml").decode("utf-8")
     assert 'name="Monthly 2026-2026"' in workbook_xml
+    assert 'name="Extracted data"' in workbook_xml
     assert 'name="Channels monthly"' in workbook_xml
     assert 'name="Google Ads campaigns Oct"' in workbook_xml
     assert 'name="Landing pages Oct"' in workbook_xml
     assert 'name="Not in GA4"' in workbook_xml
     assert "Paid Search leads" in strings
     assert "Phone calls (Infinity)" in strings
+    assert "United Kingdom" in strings
     assert warnings == []

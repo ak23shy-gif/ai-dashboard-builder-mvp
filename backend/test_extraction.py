@@ -125,10 +125,17 @@ def test_failed_export_is_blocked_and_empty_export_keeps_headers(client):
 
 def test_excel_report_is_additional_ga4_export(client, monkeypatch):
     login(client)
-    job_record()
+    job_record(columns=["date", "sessions"])
+    storage.insert_rows(
+        "job1",
+        [{"date": "2026-10-01", "sessions": 25}],
+        ["date", "sessions"],
+    )
 
-    async def fake_report(spec, sources, connector_factory):
+    async def fake_report(spec, sources, connector_factory, extracted_rows, extracted_columns):
         assert spec["product"] == "ga4"
+        assert extracted_rows
+        assert extracted_columns == ["date", "sessions"]
         return b"PK\x03\x04workbook", []
 
     monkeypatch.setattr(main, "build_ga4_excel_report", fake_report)

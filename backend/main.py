@@ -1228,8 +1228,18 @@ async def export(jid: str, request: Request, format: str = "csv", successful_onl
     if format == "xlsx_report":
         if product != "ga4":
             raise HTTPException(422, "The formatted Excel report is currently available for GA4 extractions.")
+        excel_row_limit = 1_048_575
+        columns = json.loads(row["columns"])
         with db() as c:
             sources = [dict(source) for source in c.execute("SELECT * FROM job_sources WHERE job=? ORDER BY position", (jid,))]
+            stored_rows = c.execute(
+                "SELECT data FROM rows WHERE job=? ORDER BY data LIMIT ?",
+                (jid, excel_row_limit),
+            ).fetchall()
+        extracted_rows = [
+            {column: value.get(column) for column in columns}
+            for value in (json.loads(row_value(stored, "data", 0)) for stored in stored_rows)
+        ]
         if not sources:
             sources = [{
                 "connection_id": spec.get("connection_id") or requested_owner,
@@ -1243,6 +1253,8 @@ async def export(jid: str, request: Request, format: str = "csv", successful_onl
             spec,
             sources,
             lambda report_product, connection_id: connector_for_query(report_product, requested_owner, connection_id),
+            extracted_rows,
+            columns,
         )
         filename = f"ga4_report_{spec['end']}{suffix}.xlsx"
         return Response(

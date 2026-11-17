@@ -294,8 +294,16 @@ def _write_sheet(workbook, name, headers, fields, rows, formats):
         sheet.set_column(col, col, width)
 
 
-async def build_ga4_excel_report(spec, sources, connector_factory):
+async def build_ga4_excel_report(
+    spec,
+    sources,
+    connector_factory,
+    extracted_rows=None,
+    extracted_columns=None,
+):
     """Return (xlsx bytes, warnings) for a completed GA4 extraction job."""
+    extracted_rows = extracted_rows or []
+    extracted_columns = extracted_columns or []
     start, end = date.fromisoformat(spec["start"]), date.fromisoformat(spec["end"])
     usable_sources = [source for source in sources if source.get("status") in ("complete", "skipped")]
     if not usable_sources:
@@ -336,6 +344,15 @@ async def build_ga4_excel_report(spec, sources, connector_factory):
         "percent": workbook.add_format({"font_name": "Arial", "font_size": 10, "num_format": "0.00%", "valign": "vcenter"}),
         "currency": workbook.add_format({"font_name": "Arial", "font_size": 10, "num_format": "£#,##0.00", "valign": "vcenter"}),
     }
+    if extracted_columns:
+        _write_sheet(
+            workbook,
+            "Extracted data",
+            extracted_columns,
+            extracted_columns,
+            extracted_rows,
+            formats,
+        )
     current_label = calendar.month_abbr[end.month]
     previous = end.replace(day=1) - timedelta(days=1)
     previous_label = calendar.month_abbr[previous.month]
