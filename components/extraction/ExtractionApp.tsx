@@ -344,6 +344,10 @@ export function ExtractionApp() {
   const [editableQueryUrl, setEditableQueryUrl] = useState("");
   const [exportProgress, setExportProgress] =
     useState<ExportProgress | null>(null);
+  const [pendingExcelJobId, setPendingExcelJobId] = useState<string | null>(
+    null,
+  );
+  const [excelSubmitting, setExcelSubmitting] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
   const p = status.products.find((x) => x.id === product) || fallback[0];
   const busy =
@@ -741,6 +745,15 @@ export function ExtractionApp() {
         .catch((e) => setError(e.message));
   }, [view, status.connected]);
   useEffect(() => {
+    if (!pendingExcelJobId || job?.id !== pendingExcelJobId) return;
+    if (["complete", "partial"].includes(job.status)) {
+      setPendingExcelJobId(null);
+      void downloadExport("xlsx_report");
+    } else if (job.status === "failed") {
+      setPendingExcelJobId(null);
+    }
+  }, [job?.id, job?.status, pendingExcelJobId]);
+  useEffect(() => {
     if (!setup) return;
     const previous = document.activeElement as HTMLElement | null;
     const keyboard = (event: KeyboardEvent) => {
@@ -778,8 +791,9 @@ export function ExtractionApp() {
     );
     window.location.href = `${publicApiBase}/auth/connect?product=${encodeURIComponent(product)}${connectionId ? "&connection_id=" + encodeURIComponent(connectionId) : ""}`;
   }
-  async function extract() {
+  async function extract(excelOnly = false) {
     setSubmitting(true);
+    if (excelOnly) setExcelSubmitting(true);
     setError("");
     try {
       if (product === "ga4" && filters.trim()) {
@@ -802,9 +816,9 @@ export function ExtractionApp() {
         resource: "",
         start,
         end,
-        dimensions,
-        metrics,
-        incremental,
+        dimensions: excelOnly ? [] : dimensions,
+        metrics: excelOnly ? ["sessions"] : metrics,
+        incremental: excelOnly ? false : incremental,
         options: specOptions,
         targets: selected.map((r) => ({
           connection_id: r.connection_id,
@@ -828,6 +842,7 @@ export function ExtractionApp() {
         created: "",
         spec,
       });
+      if (excelOnly) setPendingExcelJobId(r.id);
       setTimeout(
         () =>
           resultRef.current?.scrollIntoView({
@@ -837,9 +852,11 @@ export function ExtractionApp() {
         100,
       );
     } catch (e) {
+      if (excelOnly) setPendingExcelJobId(null);
       setError((e as Error).message);
     } finally {
       setSubmitting(false);
+      if (excelOnly) setExcelSubmitting(false);
     }
   }
   async function applyQuery() {
@@ -2002,36 +2019,64 @@ export function ExtractionApp() {
                       </span>
                     )}
                   </div>
-                  <button
-                    className="gx-button gx-primary gx-extract-button"
-                    disabled={
-                      (product !== "api" && !status.connected) ||
-                      (product === "api" && !apiOptions.url.trim()) ||
-                      !selected.length ||
-                      busy ||
-                      loading ||
-                      fieldLoading ||
-                      !!resourceError ||
-                      (p.metrics.length > 0 && !metrics.length) ||
-                      (product === "sheets" &&
-                        selected.some(
-                          (r) => !sourceOptions[resourceKey(r)]?.tab,
-                        ))
-                    }
-                    onClick={extract}
-                  >
-                    {busy ? (
-                      <Loader2 size={16} className="gx-spin" />
-                    ) : (
-                      <Play size={14} fill="currentColor" />
+                  <div className="gx-config-actions">
+                    {product === "ga4" && (
+                      <button
+                        className="gx-button gx-secondary gx-extract-button"
+                        disabled={
+                          !status.connected ||
+                          !selected.length ||
+                          busy ||
+                          loading ||
+                          !!resourceError
+                        }
+                        onClick={() => extract(true)}
+                        type="button"
+                      >
+                        {excelSubmitting || pendingExcelJobId ? (
+                          <Loader2 size={16} className="gx-spin" />
+                        ) : (
+                          <FileSpreadsheet size={15} />
+                        )}
+                        {excelSubmitting
+                          ? "Starting Excel report…"
+                          : pendingExcelJobId
+                            ? "Building Excel report…"
+                            : "Excel report"}
+                      </button>
                     )}
-                    {busy
-                      ? "Extracting…"
-                      : selected.length > 1 && product !== "api"
-                        ? `Extract ${selected.length} sources`
-                        : "Extract data"}
-                    {!busy && <ArrowRight size={16} />}
-                  </button>
+                    <button
+                      className="gx-button gx-primary gx-extract-button"
+                      disabled={
+                        (product !== "api" && !status.connected) ||
+                        (product === "api" && !apiOptions.url.trim()) ||
+                        !selected.length ||
+                        busy ||
+                        loading ||
+                        fieldLoading ||
+                        !!resourceError ||
+                        (p.metrics.length > 0 && !metrics.length) ||
+                        (product === "sheets" &&
+                          selected.some(
+                            (r) => !sourceOptions[resourceKey(r)]?.tab,
+                          ))
+                      }
+                      onClick={() => extract(false)}
+                      type="button"
+                    >
+                      {busy ? (
+                        <Loader2 size={16} className="gx-spin" />
+                      ) : (
+                        <Play size={14} fill="currentColor" />
+                      )}
+                      {busy
+                        ? "Extracting…"
+                        : selected.length > 1 && product !== "api"
+                          ? `Extract ${selected.length} sources`
+                          : "Extract data"}
+                      {!busy && <ArrowRight size={16} />}
+                    </button>
+                  </div>
                 </div>
               </section>
               <section className="gx-panel gx-query-panel">

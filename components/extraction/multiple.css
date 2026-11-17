@@ -38,6 +38,7 @@
 .gx-source-progress small { display: block; color: #9a8aa8; font-size: 9px; overflow-wrap: anywhere; }
 .gx-source-progress p { font-size: 10px; color: #af6050; margin: 4px 0 0; }
 .gx-source-progress > div > span:last-child { font-size: 10px; color: #9685a4; white-space: nowrap; }
+.gx-config-actions { display: flex; align-items: center; gap: 8px; }
 .gx-job-status.partial { background: #fff5df; color: #a9822d; }
 .gx-job-status.skipped { background: #edf3f7; color: #738c9f; }
 @media (max-width: 800px) {
@@ -47,6 +48,7 @@
   .gx-resource-toolbar .gx-field-search { flex-basis: 100%; }
   .gx-export-actions { flex-wrap: wrap; justify-content: flex-end; }
   .gx-source-progress { padding: 10px 14px; }
+  .gx-config-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
 }
 
 .gx-export-progress {
@@ -126,4 +128,5 @@
 }
 @media(max-width:600px) {
   .gx-export-progress { margin: 0 16px 14px; }
+  .gx-config-actions .gx-button { width: 100%; }
 }
